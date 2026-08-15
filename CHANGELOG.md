@@ -5,6 +5,13 @@ Semua perubahan penting pada WangStore didokumentasikan di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.0.0/),
 dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
+## [Unreleased]
+
+### Diperbaiki
+
+- `database/schema.sql` kini **idempoten sepenuhnya**: 24 policy RLS didahului `drop policy if exists`, sehingga menjalankan ulang schema tidak lagi gagal dengan `ERROR: 42710: policy "..." already exists`. Sebelumnya run kedua (mis. setelah run pertama terhenti di tengah) selalu berhenti di policy pertama.
+- Dokumentasi: konvensi idempoten ditegaskan di header `database/schema.sql`, bagian Database Migration, dan tabel troubleshooting `docs/DEPLOYMENT.md`.
+
 ## [1.0.0] - 2026-08-15
 
 ### Ditambahkan

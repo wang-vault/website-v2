@@ -5,6 +5,20 @@
 -- Seluruh SQL production tersedia di file ini — tidak ada tabel yang dibuat
 -- secara manual tanpa dokumentasi.
 --
+-- IDEMPOTEN: file ini aman dijalankan berulang kali (mis. setelah run pertama
+-- gagal di tengah, atau saat menerapkan perubahan skema). Konvensi wajib untuk
+-- setiap penambahan baru:
+--   - tabel     : create table if not exists
+--   - index     : create index if not exists
+--   - function  : create or replace function
+--   - extension : create extension if not exists
+--   - insert    : ... on conflict do update/nothing
+--   - policy    : PostgreSQL tidak punya "create policy if not exists",
+--                 jadi setiap policy WAJIB didahului
+--                 "drop policy if exists <nama> on <tabel>;"
+-- Tanpa guard di atas, run kedua akan gagal (mis. SQLSTATE 42710
+-- "policy ... already exists").
+--
 -- Konvensi: nama kolom camelCase (quoted identifier) agar pemetaan 1:1
 -- dengan lapisan domain aplikasi (src/lib/db/supabase-store.ts).
 --
@@ -443,38 +457,62 @@ alter table audit_logs enable row level security;
 alter table rate_limits enable row level security;
 
 -- Publik hanya boleh membaca data yang memang publik.
+drop policy if exists "baca publik products" on products;
 create policy "baca publik products" on products for select using (status = 'active' and visibility = 'public');
+drop policy if exists "baca publik packages" on packages;
 create policy "baca publik packages" on packages for select using (active = true);
+drop policy if exists "baca publik blog" on blog_posts;
 create policy "baca publik blog" on blog_posts for select using (status = 'published');
+drop policy if exists "baca publik kb" on knowledge_articles;
 create policy "baca publik kb" on knowledge_articles for select using (status = 'published');
+drop policy if exists "baca publik faq" on faq_items;
 create policy "baca publik faq" on faq_items for select using (active = true);
+drop policy if exists "baca publik testimonials" on testimonials;
 create policy "baca publik testimonials" on testimonials for select using (active = true);
+drop policy if exists "baca publik legal" on legal_documents;
 create policy "baca publik legal" on legal_documents for select using (true);
+drop policy if exists "baca publik incidents" on incidents;
 create policy "baca publik incidents" on incidents for select using (true);
+drop policy if exists "baca publik maintenance" on maintenance_windows;
 create policy "baca publik maintenance" on maintenance_windows for select using (true);
+drop policy if exists "baca publik announcements" on announcements;
 create policy "baca publik announcements" on announcements for select using (active = true);
+drop policy if exists "baca publik settings publik" on settings;
 create policy "baca publik settings publik" on settings for select using (true);
 
 -- Pelanggan hanya membaca data miliknya sendiri.
+drop policy if exists "baca profil sendiri" on profiles;
 create policy "baca profil sendiri" on profiles for select using ("userId" = auth.uid()::text);
+drop policy if exists "baca order sendiri" on orders;
 create policy "baca order sendiri" on orders for select using ("userId" = auth.uid()::text);
+drop policy if exists "baca item order sendiri" on order_items;
 create policy "baca item order sendiri" on order_items for select using (
   "orderId" in (select id from orders where "userId" = auth.uid()::text)
 );
+drop policy if exists "baca konfigurasi sendiri" on saved_configurations;
 create policy "baca konfigurasi sendiri" on saved_configurations for select using ("userId" = auth.uid()::text);
+drop policy if exists "baca tiket sendiri" on tickets;
 create policy "baca tiket sendiri" on tickets for select using ("userId" = auth.uid()::text);
+drop policy if exists "baca pesan tiket sendiri" on ticket_messages;
 create policy "baca pesan tiket sendiri" on ticket_messages for select using (
   "ticketId" in (select id from tickets where "userId" = auth.uid()::text)
 );
+drop policy if exists "baca notifikasi sendiri" on notifications;
 create policy "baca notifikasi sendiri" on notifications for select using ("userId" = auth.uid()::text);
 
 -- Audit log: tidak dapat dibaca oleh role client mana pun (hanya service role).
 -- Service role melewati RLS, sehingga kebijakan berikut memblokir akses client:
+drop policy if exists "blokir baca audit" on audit_logs;
 create policy "blokir baca audit" on audit_logs for select using (false);
+drop policy if exists "blokir baca users" on users;
 create policy "blokir baca users" on users for select using (auth.uid()::text = id);
+drop policy if exists "blokir baca coupons" on coupons;
 create policy "blokir baca coupons" on coupons for select using (false);
+drop policy if exists "blokir baca usages" on coupon_usages;
 create policy "blokir baca usages" on coupon_usages for select using (false);
+drop policy if exists "blokir baca rate limits" on rate_limits;
 create policy "blokir baca rate limits" on rate_limits for select using (false);
+drop policy if exists "blokir baca pricing" on pricing_rules;
 create policy "blokir baca pricing" on pricing_rules for select using (false);
 
 -- ============================================================================

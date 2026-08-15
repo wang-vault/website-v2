@@ -23,6 +23,8 @@ WangStore dirancang untuk berjalan **tanpa VPS**: GitHub → Vercel (Next.js) �
 5. Konfigurasikan email verifikasi & reset password: set `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` di environment (atau provider lain dengan menambahkan adapter di `src/lib/email`).
 6. **Storage**: hanya diperlukan jika fitur upload dipakai (saat ini tidak ada upload — validasi MIME/extension/size/filename/storage key tersedia di `src/lib/security/sanitize.ts` untuk ditambahkan nanti).
 
+`database/schema.sql` bersifat **idempoten** — aman dijalankan ulang bila run pertama gagal di tengah atau saat menerapkan perubahan skema. Policy RLS di-drop lebih dulu (`drop policy if exists`) sebelum dibuat ulang, karena PostgreSQL tidak menyediakan `create policy if not exists`.
+
 Jangan menjalankan SQL yang tidak tersedia di repository — seluruh SQL production ada di `database/schema.sql`.
 
 ## 2. Environment Variables
@@ -83,7 +85,8 @@ Aplikasi **tidak** menyimpan order, user, coupon, ticket, CMS, atau audit log di
 
 - `database/schema.sql` adalah sumber kebenaran skema; jalankan melalui Supabase SQL Editor.
 - Seluruh tabel terdokumentasi di file itu — tidak ada tabel yang dibuat manual tanpa dokumentasi.
-- Perubahan skema ke depan: tambahkan pernyataan idempotent (`create table if not exists`, `create or replace function`) ke file yang sama + dokumentasikan di CHANGELOG.
+- Perubahan skema ke depan: tambahkan pernyataan idempotent (`create table if not exists`, `create index if not exists`, `create or replace function`, `insert ... on conflict`) ke file yang sama + dokumentasikan di CHANGELOG.
+- **Policy RLS**: PostgreSQL tidak mendukung `create policy if not exists`. Setiap policy baru wajib didahului `drop policy if exists "<nama>" on <tabel>;` agar file tetap dapat dijalankan ulang.
 
 ## 8. Production Security
 
@@ -146,6 +149,7 @@ Lalu alur penuh: Register → verifikasi email → Login → Server Builder → 
 | --- | --- |
 | Build gagal | `npm run build` lokal; `npm install` bersih. |
 | Supabase connection gagal | `NEXT_PUBLIC_SUPABASE_URL` & `SUPABASE_SERVICE_ROLE_KEY` benar; network; schema sudah dijalankan. |
+| `ERROR: 42710: policy "..." already exists` | Schema pernah dijalankan sebagian/seluruhnya. Gunakan `database/schema.sql` versi terbaru (setiap policy sudah didahului `drop policy if exists`) lalu jalankan ulang seluruh file. |
 | Authentication gagal | `JWT_SECRET` sama antar environment; `NEXT_PUBLIC_APP_URL`; cookie diblokir browser. |
 | Database permission error | RLS/policy; server memakai service role; jangan pakai anon key untuk operasi server. |
 | Env tidak terbaca | Variable ada di environment Vercel yang benar (Production) → redeploy. |
