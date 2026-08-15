@@ -1,0 +1,86 @@
+# Salinan template — lihat README.md di folder ini untuk aktivasi.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Typecheck · Lint · Test · Build
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-test-secret-not-for-production
+      WHATSAPP_NUMBER: '6280000000000'
+      EMAIL_PROVIDER: console
+      NEXT_PUBLIC_APP_URL: http://localhost:3100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests (pricing engine)
+        run: npm run test
+      - name: Build
+        run: npm run build
+
+  smoke:
+    name: HTTP Smoke Test
+    runs-on: ubuntu-latest
+    env:
+      JWT_SECRET: ci-test-secret-not-for-production
+      WHATSAPP_NUMBER: '6280000000000'
+      EMAIL_PROVIDER: console
+      SMOKE_PORT: '3100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Smoke test (64 acceptance check)
+        run: npm run smoke
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
