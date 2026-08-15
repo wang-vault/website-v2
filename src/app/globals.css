@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Tipografi: Inter / Geist dengan fallback system sans-serif.
+     (File font tidak di-vendor; sistem/browser menyediakan font lokal.) */
+  --font-inter: 'Inter', 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+
+  /* Light Mode */
+  --background: 255 255 255;
+  --surface: 248 248 248;
+  --surface-muted: 243 243 243;
+  --border: 229 229 229;
+  --text-primary: 17 17 17;
+  --text-secondary: 102 102 102;
+  --text-muted: 136 136 136;
+  --accent: 17 17 17;
+  --accent-contrast: 255 255 255;
+  --success: 22 101 52;
+  --warning: 133 77 14;
+  --error: 153 27 27;
+  --info: 30 64 175;
+}
+
+.dark {
+  /* Dark Mode */
+  --background: 10 10 10;
+  --surface: 17 17 17;
+  --surface-muted: 23 23 23;
+  --border: 42 42 42;
+  --text-primary: 245 245 245;
+  --text-secondary: 163 163 163;
+  --text-muted: 115 115 115;
+  --accent: 255 255 255;
+  --accent-contrast: 17 17 17;
+  --success: 74 222 128;
+  --warning: 251 191 36;
+  --error: 248 113 113;
+  --info: 96 165 250;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-text-primary font-sans antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-background;
+  }
+
+  ::selection {
+    @apply bg-accent text-accent-contrast;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-container px-4 sm:px-6 lg:px-8;
+  }
+
+  .prose-ws {
+    @apply text-[0.95rem] leading-relaxed text-text-secondary;
+  }
+  .prose-ws h1 {
+    @apply mb-6 text-3xl font-bold tracking-tight text-text-primary;
+  }
+  .prose-ws h2 {
+    @apply mb-4 mt-10 text-xl font-semibold tracking-tight text-text-primary;
+  }
+  .prose-ws h3 {
+    @apply mb-3 mt-8 text-lg font-semibold text-text-primary;
+  }
+  .prose-ws p {
+    @apply mb-4;
+  }
+  .prose-ws ul {
+    @apply mb-4 list-disc space-y-1.5 pl-6;
+  }
+  .prose-ws ol {
+    @apply mb-4 list-decimal space-y-1.5 pl-6;
+  }
+  .prose-ws a {
+    @apply text-text-primary underline underline-offset-4 hover:text-text-secondary;
+  }
+  .prose-ws blockquote {
+    @apply mb-4 border-l-2 border-border pl-4 text-text-secondary;
+  }
+  .prose-ws code {
+    @apply rounded bg-surface-muted px-1.5 py-0.5 font-mono text-[0.85em] text-text-primary;
+  }
+  .prose-ws pre {
+    @apply mb-4 overflow-x-auto rounded-lg bg-surface-muted p-4;
+  }
+  .prose-ws pre code {
+    @apply bg-transparent p-0;
+  }
+  .prose-ws table {
+    @apply mb-4 w-full border-collapse text-sm;
+  }
+  .prose-ws th {
+    @apply border border-border bg-surface px-3 py-2 text-left font-semibold text-text-primary;
+  }
+  .prose-ws td {
+    @apply border border-border px-3 py-2;
+  }
+  .prose-ws hr {
+    @apply my-8 border-border;
+  }
+  .prose-ws strong {
+    @apply font-semibold text-text-primary;
+  }
+}
+
+/* Skip link */
+.skip-link {
+  @apply absolute left-4 top-4 z-[100] -translate-y-24 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-contrast transition-transform focus:translate-y-0;
+}
+
+/* Range slider minimalis */
+input[type='range'].ws-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgb(var(--surface-muted));
+  border: 1px solid rgb(var(--border));
+  outline: none;
+  cursor: pointer;
+}
+input[type='range'].ws-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: rgb(var(--accent));
+  border: 2px solid rgb(var(--accent-contrast));
+  box-shadow: 0 0 0 1px rgb(var(--accent));
+  cursor: grab;
+}
+input[type='range'].ws-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: rgb(var(--accent));
+  border: 2px solid rgb(var(--accent-contrast));
+  box-shadow: 0 0 0 1px rgb(var(--accent));
+  cursor: grab;
+}
