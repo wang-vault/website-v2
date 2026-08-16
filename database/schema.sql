@@ -28,11 +28,20 @@ create table if not exists roles (
   "createdAt" timestamptz not null default now()
 );
 
+--
+-- Pembagian peran (detail matriks: src/lib/auth/rbac.ts dan halaman /admin/roles):
+--  owner  — kepemilikan : seluruh wewenang admin + ubah role + mode maintenance.
+--  admin  — konfigurasi : seluruh wewenang staff + ubah harga, kupon, produk,
+--                         paket, konten/CMS, legal, settings + baca analitik & audit.
+--  staff  — operasional : proses order, balas tiket, kelola status layanan &
+--                         insiden; akses BACA-SAJA ke pelanggan, harga, kupon,
+--                         produk, konten, dan settings.
+--  customer            : hanya data miliknya sendiri, tanpa akses panel.
 insert into roles (name, hierarchy, description) values
-  ('owner', 3, 'Akses penuh termasuk role management dan maintenance mode.'),
-  ('admin', 2, 'Kelola harga, kupon, konten, legal, settings, analitik, audit.'),
-  ('staff', 1, 'Proses order dan balas tiket.'),
-  ('customer', 0, 'Pelanggan — akses dashboard miliknya sendiri.')
+  ('owner', 3, 'Kepemilikan — seluruh wewenang admin, ubah role pengguna, dan mode maintenance.'),
+  ('admin', 2, 'Konfigurasi — seluruh wewenang staff, ubah harga, kupon, produk, paket, konten, legal, settings, serta baca analitik dan audit log.'),
+  ('staff', 1, 'Operasional — proses order, balas tiket, kelola status layanan dan insiden; baca-saja untuk pelanggan, harga, kupon, produk, dan konten.'),
+  ('customer', 0, 'Pelanggan — akses dashboard, pesanan, dan tiket miliknya sendiri.')
 on conflict (name) do update set hierarchy = excluded.hierarchy, description = excluded.description;
 
 create table if not exists users (

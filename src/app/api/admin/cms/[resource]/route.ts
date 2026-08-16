@@ -2,11 +2,18 @@ import { apiError, apiOk, handleApiError } from '@/lib/api';
 import { requireAdmin, requireWriteSecurity, type AdminContext } from '@/lib/api/guards';
 import { cmsCreate, cmsList, getResourceDefinition } from '@/lib/cms';
 
-/** Akses CMS: resource staff-level memakai izin status.manage; lainnya content.manage. */
-function requireCmsAccess(resource: string): Promise<AdminContext> {
-  const def = getResourceDefinition(resource);
-  const permission = def.minimumRole === 'staff' ? 'status.manage' : 'content.manage';
-  return requireAdmin(permission);
+/**
+ * Akses CMS dipisah antara BACA dan TULIS.
+ * Staff boleh membaca konten sebagai rujukan (content.read / status.read),
+ * sedangkan membuat & mengubah butuh izin tulis resource tersebut
+ * (content.manage, legal.manage, atau status.manage).
+ */
+function requireCmsRead(resource: string): Promise<AdminContext> {
+  return requireAdmin(getResourceDefinition(resource).readPermission);
+}
+
+function requireCmsWrite(resource: string): Promise<AdminContext> {
+  return requireAdmin(getResourceDefinition(resource).writePermission);
 }
 
 /**
@@ -21,7 +28,7 @@ export async function GET(
   try {
     const { resource } = await params;
     getResourceDefinition(resource);
-    await requireCmsAccess(resource);
+    await requireCmsRead(resource);
     const items = await cmsList(resource);
     return apiOk(items);
   } catch (error) {
@@ -36,7 +43,7 @@ export async function POST(
   try {
     const { resource } = await params;
     getResourceDefinition(resource);
-    const { session } = await requireCmsAccess(resource);
+    const { session } = await requireCmsWrite(resource);
     await requireWriteSecurity();
 
     const body: unknown = await request.json().catch(() => null);

@@ -88,8 +88,19 @@ Buka **http://localhost:3000**.
 | Email | Kata sandi | Role |
 | --- | --- | --- |
 | `admin@wangstore.id` | `WangStoreDevAdmin2026!` | Owner |
+| `admin.demo@wangstore.id` | `WangStoreDevStaff2026!` | Admin |
+| `staff.demo@wangstore.id` | `WangStoreDevStaff2026!` | Staff |
 
-Kredensial ini hanya untuk pengembangan lokal. Di production, akun Owner dibuat lewat `npm run db:seed` dengan `ADMIN_EMAIL`/`ADMIN_PASSWORD` dari environment.
+Akun Admin & Staff disediakan agar perbedaan wewenang kedua peran dapat langsung dicoba (bandingkan menu dan
+halaman yang tersedia di `/admin` untuk masing-masing akun). Kredensial ini **hanya** untuk pengembangan lokal
+(JSON datastore). Di production, akun Owner dibuat lewat `npm run db:seed` dengan `ADMIN_EMAIL`/`ADMIN_PASSWORD`
+dari environment, lalu peran Admin/Staff diberikan Owner melalui **Panel Admin → Pelanggan**, atau untuk
+bootstrap pertama:
+
+```bash
+npm run db:role -- --email staf@domain.com --role staff
+npm run db:role -- --email admin@domain.com --role admin
+```
 
 ## Konfigurasi Environment
 
@@ -190,11 +201,33 @@ Ringkasan — detail lengkap: [docs/SECURITY.md](docs/SECURITY.md).
 - CSRF: double-submit cookie + validasi Origin/Host pada semua permintaan tulis.
 - Rate limiting: IP + endpoint + user; DB-backed di Supabase (serverless-compatible).
 - Validasi Zod + sanitasi rekursif + payload limit.
-- RBAC: Owner > Admin > Staff, diverifikasi ulang di **setiap** API route.
+- RBAC: Owner > Admin > Staff > Pelanggan dengan matriks izin eksplisit per peran, diverifikasi ulang di **setiap** API route dan setiap halaman admin. Matriks hidup: `/admin/roles`.
 - Audit log untuk login/logout/login gagal/create/update/delete/pricing/coupon/order/customer/CMS/legal/role/maintenance. Password & secret tidak pernah masuk log.
 - Header: CSP (dengan nonce), HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP.
 - Bot protection: Cloudflare Turnstile opsional (register/contact/order) — tidak ada CAPTCHA buatan sendiri.
 - **Harga dari browser tidak pernah dipercaya** — selalu dihitung ulang server-side.
+
+## Peran & Hak Akses
+
+Empat peran dengan pembagian tanggung jawab yang tegas — matriks lengkap dirender langsung dari kode di
+**Panel Admin → Peran & Izin** (`/admin/roles`).
+
+| Peran | Fungsi | Dapat | Tidak dapat |
+| --- | --- | --- | --- |
+| **Owner** | Kepemilikan | Semua wewenang Admin + ubah role pengguna + mode maintenance | Menurunkan role Owner lain |
+| **Admin** | Konfigurasi | Semua wewenang Staff + harga, kupon, produk & paket, konten/CMS, legal, pengaturan situs, analitik, audit log | Ubah role pengguna, mode maintenance |
+| **Staff** | Operasional | Proses pesanan, balas tiket, kelola status layanan/insiden; **baca-saja** pelanggan, harga, kupon, produk, konten | Ubah harga/kupon/produk/konten/pengaturan, baca analitik & audit log |
+| **Pelanggan** | Pengguna akhir | Dashboard, pesanan, tiket, dan profil miliknya sendiri | Mengakses panel admin |
+
+Cara kerjanya:
+
+- Matriks izin eksplisit per peran di `src/lib/auth/rbac.ts` (`ROLE_PERMISSIONS`), dengan pemisahan `*.read`
+  dan `*.manage` sehingga Staff bisa **melihat** data referensi tanpa bisa mengubahnya.
+- Halaman admin memanggil `requireAdminPage(permission)`; peran tanpa izin diarahkan ke `/admin/forbidden`
+  yang menjelaskan izin apa yang kurang dan siapa yang memilikinya.
+- Menu admin difilter di server berdasarkan izin; halaman yang bersifat baca-saja ditandai ikon mata dan
+  merender formulir dalam mode nonaktif.
+- Setiap API route tetap memverifikasi izin sendiri — UI hanya kenyamanan, bukan pengaman.
 
 ## Pricing & Server Builder
 
@@ -228,12 +261,12 @@ Seluruh konten website dikelola dari admin tanpa menyentuh kode: Homepage, About
 ```bash
 npm run typecheck   # 0 error TypeScript
 npm run lint        # 0 error, 0 warning
-npm run test        # unit test pricing engine (Vitest)
+npm run test        # unit test pricing engine + matriks RBAC (Vitest)
 npm run build       # production build
-npm run smoke       # HTTP smoke test (64 acceptance check)
+npm run smoke       # HTTP smoke test (78 acceptance check)
 ```
 
-`npm run ci` menjalankan semuanya. Smoke test mencakup: harga paket High tepat, minimum Low 45.000, normalisasi 20/64/900 → 16/32/160, Medium → 409, paket palsu → 422, halaman publik → 200, `/dashboard` → `/login`, admin salah/benar + RBAC, CSRF lintas origin ditolak, kupon valid/kedaluwarsa/limit/diskon client diabaikan.
+`npm run ci` menjalankan semuanya. Smoke test mencakup: harga paket High tepat, minimum Low 45.000, normalisasi 20/64/900 → 16/32/160, Medium → 409, paket palsu → 422, halaman publik → 200, `/dashboard` → `/login`, admin salah/benar + RBAC, pemisahan wewenang Staff vs Admin vs Owner (staff dapat operasional & baca-saja, ditolak untuk harga/CMS/branding/audit/analitik; admin ditolak untuk mode maintenance), CSRF lintas origin ditolak, kupon valid/kedaluwarsa/limit/diskon client diabaikan.
 
 > **CI/CD (GitHub Actions)** — workflow typecheck, lint, test, build, smoke test, `npm audit`, dan CodeQL tersedia sebagai template di [`.github/workflow-templates/`](.github/workflow-templates/) (beberapa organisasi membatasi izin `workflows` untuk bot). Untuk mengaktifkan, salin `ci.yml` ke `.github/workflows/` — langkahnya ada di [`.github/workflow-templates/README.md`](.github/workflow-templates/README.md).
 
@@ -255,6 +288,7 @@ npm run smoke       # HTTP smoke test (64 acceptance check)
 - [ ] `database/schema.sql` dijalankan
 - [ ] RLS dikonfigurasi
 - [ ] Akun Owner dibuat (`npm run db:seed`)
+- [ ] Peran Admin/Staff diberikan lewat panel atau `npm run db:role`
 - [ ] Environment variables Vercel dikonfigurasi
 - [ ] Production URL dikonfigurasi (`NEXT_PUBLIC_APP_URL`)
 - [ ] Build berhasil

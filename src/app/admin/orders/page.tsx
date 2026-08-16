@@ -1,6 +1,9 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { OrdersManager } from '@/components/admin/orders-manager';
 
-export default function AdminOrdersPage() {
+export default async function AdminOrdersPage() {
+  await requireAdminPage('orders.read');
+
   return (
     <div className="space-y-6">
       <header>

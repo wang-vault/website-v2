@@ -1,3 +1,4 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { CmsManager, type CmsManagerConfig } from '@/components/admin/cms-manager';
 
 const FAQ_CONFIG: CmsManagerConfig = {
@@ -21,7 +22,9 @@ const FAQ_CONFIG: CmsManagerConfig = {
   ],
 };
 
-export default function AdminFaqPage() {
+export default async function AdminFaqPage() {
+  const { can } = await requireAdminPage('content.read');
+
   return (
     <div className="space-y-6">
       <header>
@@ -30,7 +33,7 @@ export default function AdminFaqPage() {
           Pertanyaan yang tampil di halaman FAQ publik dan bagian FAQ beranda.
         </p>
       </header>
-      <CmsManager config={FAQ_CONFIG} />
+      <CmsManager config={FAQ_CONFIG} readOnly={!can('content.manage')} />
     </div>
   );
 }

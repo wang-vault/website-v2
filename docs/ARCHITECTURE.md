@@ -102,19 +102,28 @@ Harga dari klien diabaikan sepenuhnya. Halaman konfirmasi order diakses pemilik 
 
 ## 8. RBAC
 
-Hierarchy: **Owner > Admin > Staff** (customer di bawah semua). Matriks izin di `src/lib/auth/rbac.ts`; contoh:
+Hierarchy: **Owner > Admin > Staff** (customer di bawah semua). Matriks izin eksplisit per role di
+`src/lib/auth/rbac.ts` (`ROLE_PERMISSIONS`), dengan pemisahan tegas antara izin `*.read` dan `*.manage`:
 
 | Operasi | Minimum role |
 | --- | --- |
-| Baca/ubah status order, balas tiket | Staff |
-| Kelola kupon, formula harga, produk, paket, konten, legal, settings, analitik, audit | Admin |
+| Baca/ubah status order, balas tiket, kelola status & insiden | Staff |
+| Baca pelanggan, harga, kupon, produk, konten, settings (read-only) | Staff |
+| Ubah kupon, formula harga, produk, paket, konten, legal, settings; baca analitik & audit | Admin |
 | Ubah role pengguna, mode maintenance | Owner |
 
-Perubahan role: hanya Owner; role Owner tidak dapat diturunkan. RBAC diverifikasi ulang di **setiap** API route — bukan hanya di UI.
+Pembagian peran singkat: **Staff = operasional** (menjalankan pekerjaan harian, hanya membaca data kebijakan),
+**Admin = konfigurasi** (mengubah harga, penawaran, konten, pengaturan), **Owner = kepemilikan** (role &
+maintenance). Perubahan role: hanya Owner; role Owner tidak dapat diturunkan.
+
+Penegakan berlapis: middleware (edge) → guard halaman `requireAdminPage()` (`src/lib/auth/page-guards.ts`) →
+`requireAdmin()` di setiap API route. Navigasi difilter server-side lewat `src/lib/admin/nav.ts` dan komponen
+admin menerima prop `readOnly` untuk role tanpa izin tulis. Matriks izin hidup dapat dilihat di `/admin/roles`.
+RBAC diverifikasi ulang di **setiap** API route — bukan hanya di UI.
 
 ## 9. Generic CMS
 
-`src/lib/cms/` mendefinisikan resource map (`blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows`) dengan per resource: collection, identity field, allowed fields, skema Zod, minimum role. Dua route (`/api/admin/cms/[resource]` dan `/api/admin/cms/[resource]/[id]`) melayani seluruh modul — tidak ada 20 endpoint duplikat. UI admin memakai satu `CmsManager` yang digerakkan konfigurasi.
+`src/lib/cms/` mendefinisikan resource map (`blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows`) dengan per resource: collection, identity field, allowed fields, skema Zod, serta `readPermission` dan `writePermission` terpisah. Dua route (`/api/admin/cms/[resource]` dan `/api/admin/cms/[resource]/[id]`) melayani seluruh modul — tidak ada 20 endpoint duplikat. UI admin memakai satu `CmsManager` yang digerakkan konfigurasi.
 
 ## 10. Mode Maintenance
 

@@ -116,6 +116,9 @@ async function main() {
       WHATSAPP_NUMBER: process.env.WHATSAPP_NUMBER || '6281234567890',
       EMAIL_PROVIDER: 'console',
       NEXT_PUBLIC_APP_URL: BASE,
+      // Harness melakukan login untuk banyak peran (customer, owner, admin, staff);
+      // batas login default 5/IP akan menghalangi test — bukan properti yang diuji di sini.
+      RATE_LIMIT_LOGIN_MAX: process.env.RATE_LIMIT_LOGIN_MAX || '50',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true, // grup proses sendiri agar child next-server ikut dimatikan
@@ -316,6 +319,96 @@ async function main() {
       body: { status: 'paid' },
     });
     assert(statusUpdate.status === 200 && statusUpdate.json?.data?.status === 'paid', 'ubah status order → paid');
+
+    // ── Test 9: pemisahan wewenang Admin vs Staff (akun contoh mode JSON dev)
+    console.log('Test 9 — Pemisahan peran Admin vs Staff');
+    const staffJar = [];
+    const staffLogin = await request('/api/auth/login', {
+      method: 'POST',
+      jar: staffJar,
+      body: { email: 'staff.demo@wangstore.id', password: process.env.STAFF_PASSWORD || 'WangStoreDevStaff2026!' },
+    });
+    if (staffLogin.status === 200 && staffLogin.json?.data?.role === 'staff') {
+      const staffCsrf = staffJar.find((c) => c.name === 'ws_csrf')?.value ?? '';
+      assert(true, 'login staff → 200 role staff');
+
+      // Operasional: boleh.
+      const staffOrders = await request('/api/admin/orders', { jar: staffJar });
+      assert(staffOrders.status === 200, 'staff → orders API → 200');
+      const staffTickets = await request('/api/admin/tickets', { jar: staffJar });
+      assert(staffTickets.status === 200, 'staff → tickets API → 200');
+      const staffStatus = await request('/api/admin/settings', {
+        method: 'PUT',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { platformStatus: 'operational' },
+      });
+      assert(staffStatus.status === 200, 'staff → ubah status layanan → 200');
+
+      // Baca-saja: boleh membaca.
+      const staffReadCms = await request('/api/admin/cms/blog', { jar: staffJar });
+      assert(staffReadCms.status === 200, 'staff → baca CMS blog → 200');
+      const staffReadCustomers = await request('/api/admin/customers', { jar: staffJar });
+      assert(staffReadCustomers.status === 200, 'staff → baca pelanggan → 200');
+
+      // Konfigurasi: ditolak.
+      const staffPricing = await request('/api/admin/pricing', {
+        method: 'PUT',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { base: 1, perCore: 1, perGbRam: 1, perGbStorage: 1, roundTo: 500, minPrice: 45000 },
+      });
+      assert(staffPricing.status === 403, 'staff → ubah harga → 403');
+      const staffWriteCms = await request('/api/admin/cms/faq', {
+        method: 'POST',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { question: 'Uji staff', answer: 'x', category: 'Umum', sortOrder: 1, active: true },
+      });
+      assert(staffWriteCms.status === 403, 'staff → tulis CMS → 403');
+      const staffBranding = await request('/api/admin/settings', {
+        method: 'PUT',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { siteName: 'Bukan WangStore' },
+      });
+      assert(staffBranding.status === 403, 'staff → ubah branding → 403');
+      const staffAudit = await request('/api/admin/audit-logs', { jar: staffJar });
+      assert(staffAudit.status === 403, 'staff → audit log → 403');
+      const staffAnalytics = await request('/api/admin/analytics', { jar: staffJar });
+      assert(staffAnalytics.status === 403, 'staff → analitik → 403');
+
+      // Halaman khusus admin/owner dialihkan ke /admin/forbidden.
+      const staffAnalyticsPage = await request('/admin/analytics', { jar: staffJar });
+      const redirectedToForbidden =
+        (staffAnalyticsPage.redirect ?? '').includes('/admin/forbidden') ||
+        (staffAnalyticsPage.text ?? '').includes('/admin/forbidden');
+      assert(redirectedToForbidden, 'staff → /admin/analytics → /admin/forbidden', String(staffAnalyticsPage.status));
+
+      // Admin: boleh konfigurasi, tetapi bukan role & maintenance (Owner-only).
+      const adminJar2 = [];
+      const adminLogin2 = await request('/api/auth/login', {
+        method: 'POST',
+        jar: adminJar2,
+        body: { email: 'admin.demo@wangstore.id', password: process.env.STAFF_PASSWORD || 'WangStoreDevStaff2026!' },
+      });
+      if (adminLogin2.status === 200 && adminLogin2.json?.data?.role === 'admin') {
+        const adminCsrf2 = adminJar2.find((c) => c.name === 'ws_csrf')?.value ?? '';
+        const adminAudit = await request('/api/admin/audit-logs', { jar: adminJar2 });
+        assert(adminAudit.status === 200, 'admin → audit log → 200');
+        const adminMaintenance = await request('/api/admin/settings', {
+          method: 'PUT',
+          jar: adminJar2,
+          headers: { 'x-csrf-token': adminCsrf2 },
+          body: { maintenanceMode: true },
+        });
+        assert(adminMaintenance.status === 403, 'admin → mode maintenance → 403 (Owner-only)');
+      } else {
+        console.log('  … akun contoh admin tidak tersedia — dilewati');
+      }
+    } else {
+      console.log('  … akun contoh staff tidak tersedia (bukan mode JSON dev) — dilewati');
+    }
 
     // ── Test 10: kupon
     console.log('Test 10 — Kupon');

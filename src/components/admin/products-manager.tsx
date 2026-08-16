@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -63,7 +64,8 @@ const EMPTY_PACKAGE: PackageForm = {
   sortOrder: '0',
 };
 
-export function ProductsManager() {
+/** Mode baca-saja aktif untuk peran tanpa izin products.manage (mis. Staff). */
+export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
   const { toast } = useToast();
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [packages, setPackages] = useState<PackageRecord[]>([]);
@@ -99,6 +101,7 @@ export function ProductsManager() {
   }, [load]);
 
   const saveProduct = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     try {
       const payload = {
@@ -127,10 +130,11 @@ export function ProductsManager() {
     } finally {
       setSaving(false);
     }
-  }, [editingProductId, load, productForm, toast]);
+  }, [editingProductId, load, productForm, readOnly, toast]);
 
   const deleteProduct = useCallback(
     async (product: ProductRecord) => {
+      if (readOnly) return;
       if (!window.confirm(`Hapus produk "${product.name}"?`)) return;
       try {
         await fetch(`/api/admin/products/${product.id}`, {
@@ -143,10 +147,11 @@ export function ProductsManager() {
         toast({ variant: 'error', title: 'Jaringan bermasalah' });
       }
     },
-    [load, toast],
+    [load, readOnly, toast],
   );
 
   const savePackage = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     try {
       const payload = {
@@ -177,10 +182,11 @@ export function ProductsManager() {
     } finally {
       setSaving(false);
     }
-  }, [editingPackageId, load, packageForm, toast]);
+  }, [editingPackageId, load, packageForm, readOnly, toast]);
 
   const deletePackage = useCallback(
     async (pkg: PackageRecord) => {
+      if (readOnly) return;
       if (!window.confirm(`Hapus paket "${pkg.id}"?`)) return;
       try {
         await fetch(`/api/admin/packages/${pkg.id}`, {
@@ -193,23 +199,32 @@ export function ProductsManager() {
         toast({ variant: 'error', title: 'Jaringan bermasalah' });
       }
     },
-    [load, toast],
+    [load, readOnly, toast],
   );
 
   const productTab = (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          onClick={() => {
-            setEditingProductId(null);
-            setProductForm(EMPTY_PRODUCT);
-            setProductModal(true);
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah Produk
-        </Button>
-      </div>
+      {readOnly ? (
+        <Alert variant="info" title="Mode baca-saja">
+          <p>
+            Peran Anda dapat melihat katalog produk sebagai rujukan, tetapi menambah, mengubah, dan menghapus
+            produk adalah wewenang Admin.
+          </p>
+        </Alert>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => {
+              setEditingProductId(null);
+              setProductForm(EMPTY_PRODUCT);
+              setProductModal(true);
+            }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Tambah Produk
+          </Button>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[640px] border-collapse text-left text-sm">
           <thead>
@@ -256,16 +271,18 @@ export function ProductsManager() {
                         setProductModal(true);
                       }}
                     >
-                      Edit
+                      {readOnly ? 'Lihat' : 'Edit'}
                     </Button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteProduct(product)}
-                      aria-label={`Hapus produk ${product.name}`}
-                      className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    {readOnly ? null : (
+                      <button
+                        type="button"
+                        onClick={() => void deleteProduct(product)}
+                        aria-label={`Hapus produk ${product.name}`}
+                        className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -278,18 +295,26 @@ export function ProductsManager() {
 
   const packageTab = (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          onClick={() => {
-            setEditingPackageId(null);
-            setPackageForm(EMPTY_PACKAGE);
-            setPackageModal(true);
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah Paket
-        </Button>
-      </div>
+      {readOnly ? (
+        <Alert variant="info" title="Mode baca-saja">
+          <p>
+            Peran Anda dapat melihat daftar paket dan harganya, tetapi mengubah paket adalah wewenang Admin.
+          </p>
+        </Alert>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => {
+              setEditingPackageId(null);
+              setPackageForm(EMPTY_PACKAGE);
+              setPackageModal(true);
+            }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Tambah Paket
+          </Button>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[640px] border-collapse text-left text-sm">
           <thead>
@@ -336,16 +361,18 @@ export function ProductsManager() {
                         setPackageModal(true);
                       }}
                     >
-                      Edit
+                      {readOnly ? 'Lihat' : 'Edit'}
                     </Button>
-                    <button
-                      type="button"
-                      onClick={() => void deletePackage(pkg)}
-                      aria-label={`Hapus paket ${pkg.id}`}
-                      className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    {readOnly ? null : (
+                      <button
+                        type="button"
+                        onClick={() => void deletePackage(pkg)}
+                        aria-label={`Hapus paket ${pkg.id}`}
+                        className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -373,10 +400,10 @@ export function ProductsManager() {
       <Modal
         open={productModal}
         onClose={() => setProductModal(false)}
-        title={editingProductId ? 'Edit Produk' : 'Tambah Produk'}
+        title={readOnly ? 'Detail Produk' : editingProductId ? 'Edit Produk' : 'Tambah Produk'}
         description="Katalog produk ditampilkan di beranda dan dipakai Server Builder."
       >
-        <div className="space-y-4">
+        <fieldset disabled={readOnly} className="m-0 space-y-4 border-0 p-0">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nama" required>
               <Input
@@ -437,22 +464,24 @@ export function ProductsManager() {
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setProductModal(false)}>
-              Batal
+              {readOnly ? 'Tutup' : 'Batal'}
             </Button>
-            <Button onClick={() => void saveProduct()} loading={saving}>
-              Simpan
-            </Button>
+            {readOnly ? null : (
+              <Button onClick={() => void saveProduct()} loading={saving}>
+                Simpan
+              </Button>
+            )}
           </div>
-        </div>
+        </fieldset>
       </Modal>
 
       <Modal
         open={packageModal}
         onClose={() => setPackageModal(false)}
-        title={editingPackageId ? 'Edit Paket' : 'Tambah Paket High'}
+        title={readOnly ? 'Detail Paket' : editingPackageId ? 'Edit Paket' : 'Tambah Paket High'}
         description="Paket tetap tier High dengan harga final."
       >
-        <div className="space-y-4">
+        <fieldset disabled={readOnly} className="m-0 space-y-4 border-0 p-0">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Id Paket" required hint="Contoh: high-4c8g">
               <Input
@@ -511,13 +540,15 @@ export function ProductsManager() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setPackageModal(false)}>
-              Batal
+              {readOnly ? 'Tutup' : 'Batal'}
             </Button>
-            <Button onClick={() => void savePackage()} loading={saving}>
-              Simpan
-            </Button>
+            {readOnly ? null : (
+              <Button onClick={() => void savePackage()} loading={saving}>
+                Simpan
+              </Button>
+            )}
           </div>
-        </div>
+        </fieldset>
       </Modal>
 
       {products.length === 0 && packages.length === 0 ? (

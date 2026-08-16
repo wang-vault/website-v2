@@ -1,3 +1,4 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { CmsManager, type CmsManagerConfig } from '@/components/admin/cms-manager';
 import { BlogCategoriesManager } from '@/components/admin/blog-categories-manager';
 
@@ -35,7 +36,10 @@ const BLOG_CONFIG: CmsManagerConfig = {
   ],
 };
 
-export default function AdminBlogPage() {
+export default async function AdminBlogPage() {
+  const { can } = await requireAdminPage('content.read');
+  const readOnly = !can('content.manage');
+
   return (
     <div className="space-y-8">
       <header>
@@ -44,8 +48,8 @@ export default function AdminBlogPage() {
           Kelola artikel blog: Markdown, kategori, tag, draft/terbit, dan tanggal terbit.
         </p>
       </header>
-      <BlogCategoriesManager />
-      <CmsManager config={BLOG_CONFIG} />
+      <BlogCategoriesManager readOnly={readOnly} />
+      <CmsManager config={BLOG_CONFIG} readOnly={readOnly} />
     </div>
   );
 }

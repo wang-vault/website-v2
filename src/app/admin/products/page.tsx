@@ -1,6 +1,9 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { ProductsManager } from '@/components/admin/products-manager';
 
-export default function AdminProductsPage() {
+export default async function AdminProductsPage() {
+  const { can } = await requireAdminPage('products.read');
+
   return (
     <div className="space-y-6">
       <header>
@@ -9,7 +12,7 @@ export default function AdminProductsPage() {
           Katalog produk dan paket High disimpan di database — tidak di-hardcode ke UI.
         </p>
       </header>
-      <ProductsManager />
+      <ProductsManager readOnly={!can('products.manage')} />
     </div>
   );
 }

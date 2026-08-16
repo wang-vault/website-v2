@@ -79,18 +79,24 @@ Artikel terbit. `GET /api/knowledge-base` / `[slug]` untuk knowledge base.
 
 | Endpoint | Minimum role |
 | --- | --- |
-| `GET /orders` (filter `status`, `q`, `page`) | Staff |
-| `GET/PATCH /orders/[id]` (`status`) | Staff (baca) / Staff (update) |
-| `GET /customers`, `PATCH /customers/[id]` | Admin; perubahan role → Owner |
-| `GET /tickets`, `GET/PATCH /tickets/[id]`, `POST /tickets/[id]/messages` | Staff |
-| `GET/PUT /pricing` | Admin |
-| `GET/POST /coupons`, `PATCH/DELETE /coupons/[id]` | Admin |
-| `GET/POST /products`, `PATCH/DELETE /products/[id]` | Admin |
-| `GET/POST /packages`, `PATCH/DELETE /packages/[id]` | Admin |
-| `GET /analytics` | Admin |
-| `GET/PUT /settings` | Admin; field maintenance → Owner |
-| `GET /audit-logs` (filter `resource`, `q`) | Admin |
-| `GET/POST /cms/[resource]`, `GET/PATCH/DELETE /cms/[resource]/[id]` | Admin; incidents/maintenanceWindows → Staff |
+| `GET /orders` (filter `status`, `q`, `page`) | Staff (`orders.read`) |
+| `GET/PATCH /orders/[id]` (`status`) | Staff (`orders.read` / `orders.update`) |
+| `GET /customers` | Staff (`customers.read`, baca-saja) |
+| `PATCH /customers/[id]` | Admin (`customers.update`); perubahan role → Owner (`roles.manage`) |
+| `GET /tickets`, `GET/PATCH /tickets/[id]`, `POST /tickets/[id]/messages` | Staff (`tickets.read` / `tickets.reply`) |
+| `GET /pricing` | Staff (`pricing.read`) |
+| `PUT /pricing` | Admin (`pricing.manage`) |
+| `GET /coupons` | Staff (`coupons.read`) |
+| `POST /coupons`, `PATCH/DELETE /coupons/[id]` | Admin (`coupons.manage`) |
+| `GET /products`, `GET /packages` | Staff (`products.read`) |
+| `POST /products`, `PATCH/DELETE /products/[id]` | Admin (`products.manage`) |
+| `POST /packages`, `PATCH/DELETE /packages/[id]` | Admin (`packages.manage`) |
+| `GET /analytics` | Admin (`analytics.read`) |
+| `GET /settings` | Staff (`settings.read`) |
+| `PUT /settings` | Per grup field: status layanan → Staff (`status.manage`), maintenance → Owner (`maintenance.manage`), sisanya → Admin (`settings.manage`) |
+| `GET /audit-logs` (filter `resource`, `q`) | Admin (`audit.read`) |
+| `GET /cms/[resource]`, `GET /cms/[resource]/[id]` | Staff (`readPermission` resource: `content.read` / `status.read`) |
+| `POST/PATCH/DELETE /cms/[resource]` | `writePermission` resource: `content.manage` (Admin), `legal.manage` (Admin), `status.manage` (Staff untuk incidents/maintenanceWindows) |
 
 Resource CMS: `blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows` — satu generic handler dengan resource map (skema Zod + allowed fields per resource di `src/lib/cms/index.ts`).
 

@@ -5,6 +5,44 @@ Semua perubahan penting pada WangStore didokumentasikan di file ini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/id-ID/1.0.0/),
 dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
+## [Unreleased]
+
+### Ditambahkan
+
+- **Matriks izin RBAC eksplisit per peran** (`src/lib/auth/rbac.ts`) — daftar izin setiap role ditulis satu per
+  satu (`ROLE_PERMISSIONS`) dengan pewarisan eksplisit Staff → Admin → Owner, menggantikan pengecekan berbasis
+  angka hierarki saja. Ditambah metadata `ROLE_DEFINITIONS`, `PERMISSION_LABELS`, dan `PERMISSION_GROUPS`.
+- **Izin baca terpisah dari izin tulis** — `pricing.read`, `coupons.read`, `products.read`, `content.read`,
+  `customers.read`, `settings.read`, dan `status.read` untuk Staff; `*.manage` tetap milik Admin/Owner.
+- **Guard izin di setiap halaman admin** (`src/lib/auth/page-guards.ts`) — Staff tidak lagi dapat membuka
+  halaman khusus Admin/Owner lewat URL langsung.
+- **Halaman `/admin/forbidden`** — penjelasan jujur tentang izin yang kurang, siapa yang memilikinya, dan
+  ringkasan wewenang peran saat ini.
+- **Halaman `/admin/roles`** — matriks peran & izin yang dirender langsung dari kode RBAC (dokumentasi hidup).
+- **Navigasi admin sadar-peran** — menu difilter di server dan dikelompokkan (Operasional, Katalog & Harga,
+  Konten, Pengaturan, Kepemilikan); halaman baca-saja ditandai ikon mata.
+- **Mode baca-saja pada komponen admin** — `CmsManager`, `PricingForm`, `CouponsManager`, `ProductsManager`,
+  `BlogCategoriesManager`, dan `CustomersManager` menerima prop izin dan menyembunyikan aksi tulis.
+- **`npm run db:role`** (`scripts/set-role.ts`) — bootstrap peran Admin/Staff di production; menaikkan
+  `tokenVersion` agar sesi lama batal dan mencatat perubahan ke audit log.
+- **Akun contoh Admin & Staff** pada seed JSON pengembangan lokal untuk mencoba perbedaan wewenang.
+- **27 unit test RBAC** (`src/lib/auth/rbac.test.ts`) — pewarisan izin, batas Staff vs Admin, wewenang khusus
+  Owner, filter navigasi, dan pemisahan baca/tulis resource CMS.
+
+### Diubah
+
+- `PUT /api/admin/settings` memeriksa izin **per grup field**: status layanan → Staff (`status.manage`),
+  mode maintenance → Owner (`maintenance.manage`), sisanya → Admin (`settings.manage`). Sebelumnya Staff tidak
+  dapat memperbarui status layanan meskipun itu tugas operasionalnya.
+- Resource CMS memakai `readPermission` + `writePermission` menggantikan `minimumRole`, sehingga Staff dapat
+  membaca konten sebagai rujukan tanpa dapat mengubahnya.
+- `GET /api/admin/customers` dapat diakses Staff sebagai baca-saja; perubahan data tetap `customers.update`
+  (Admin) dan perubahan role tetap `roles.manage` (Owner).
+- Ringkasan `/admin` menampilkan statistik dan aksi cepat sesuai izin peran.
+- Halaman Mode Maintenance memakai guard izin standar, bukan pengecekan role manual.
+- Dokumentasi (README, ARCHITECTURE, SECURITY, API) dan deskripsi tabel `roles` di `database/schema.sql`
+  diperbarui mengikuti pembagian peran baru.
+
 ## [1.0.0] - 2026-08-15
 
 ### Ditambahkan

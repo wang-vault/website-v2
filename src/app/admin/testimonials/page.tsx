@@ -1,3 +1,4 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { CmsManager, type CmsManagerConfig } from '@/components/admin/cms-manager';
 import { Alert } from '@/components/ui/alert';
 
@@ -22,7 +23,9 @@ const TESTIMONIALS_CONFIG: CmsManagerConfig = {
   ],
 };
 
-export default function AdminTestimonialsPage() {
+export default async function AdminTestimonialsPage() {
+  const { can } = await requireAdminPage('content.read');
+
   return (
     <div className="space-y-6">
       <header>
@@ -37,7 +40,7 @@ export default function AdminTestimonialsPage() {
           empty state secara jujur.
         </p>
       </Alert>
-      <CmsManager config={TESTIMONIALS_CONFIG} />
+      <CmsManager config={TESTIMONIALS_CONFIG} readOnly={!can('content.manage')} />
     </div>
   );
 }

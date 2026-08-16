@@ -64,12 +64,37 @@ payload limit → rate limit → maintenance → origin/CSRF → Turnstile
 
 ## 8. RBAC
 
-Hierarchy: Owner > Admin > Staff > Customer. Matriks di `src/lib/auth/rbac.ts`. Aturan khusus:
+Hierarchy: Owner > Admin > Staff > Customer. Matriks izin **eksplisit per role** di `src/lib/auth/rbac.ts`
+(`ROLE_PERMISSIONS`) — bukan sekadar perbandingan angka hierarki. Admin mewarisi seluruh izin Staff, Owner
+mewarisi seluruh izin Admin, dan pewarisan itu ditulis eksplisit agar dapat diuji (`src/lib/auth/rbac.test.ts`).
+
+Pembagian peran:
+
+| Peran | Fungsi | Wewenang inti |
+| --- | --- | --- |
+| **Staff** | Operasional | Order (baca + ubah status), tiket (baca + balas), status layanan/insiden/jendela maintenance. Akses **baca-saja** ke pelanggan, harga, kupon, produk, konten, pengaturan. |
+| **Admin** | Konfigurasi | Seluruh izin Staff + ubah harga, kupon, produk, paket, konten, legal, pengaturan situs, serta baca analitik & audit log. |
+| **Owner** | Kepemilikan | Seluruh izin Admin + ubah role pengguna dan mode maintenance. |
+
+Aturan khusus:
 
 - Perubahan role: Owner-only; role Owner tidak dapat diturunkan; hanya Owner yang menetapkan role Owner.
 - Mode maintenance: Owner-only.
-- Audit log: Admin+ (customer/staff tidak dapat membaca).
-- Staff tidak dapat mengubah harga/kupon/CMS/legal.
+- Audit log & analitik: Admin+ (customer/staff tidak dapat membaca).
+- Staff tidak dapat mengubah harga/kupon/produk/CMS/legal/settings — hanya membacanya.
+- `PUT /api/admin/settings` memeriksa izin **per grup field**: status layanan (Staff), mode maintenance (Owner),
+  sisanya (Admin).
+- Resource CMS memiliki `readPermission` dan `writePermission` terpisah, sehingga Staff dapat membaca konten
+  tetapi hanya dapat menulis resource status (`incidents`, `maintenanceWindows`).
+
+Penegakan berlapis (defense in depth):
+
+1. **Middleware (edge)** — memblokir non-staf di seluruh `/admin`.
+2. **Halaman** — setiap halaman admin memanggil `requireAdminPage(permission)` (`src/lib/auth/page-guards.ts`);
+   role tanpa izin diarahkan ke `/admin/forbidden` yang menjelaskan izin yang kurang.
+3. **API** — setiap route memanggil `requireAdmin(permission)`; ini satu-satunya lapisan yang menentukan.
+4. **UI** — menu difilter di server (`src/lib/admin/nav.ts`) dan komponen dirender `readOnly`. Ini kenyamanan,
+   **bukan** mekanisme keamanan.
 
 ## 9. Audit Log
 

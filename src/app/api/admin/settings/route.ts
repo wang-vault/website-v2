@@ -34,6 +34,13 @@ const settingsSchema = z.object({
   maintenanceAllowedPaths: z.array(z.string().trim().max(120)).max(30).optional(),
 });
 
+/**
+ * Pengaturan disimpan dalam satu baris, tetapi WEWENANGNYA berbeda per grup
+ * field. Karena itu izin diperiksa per grup, bukan sekali untuk seluruh route:
+ * - status layanan  → status.manage      (Staff — bagian dari tugas operasional)
+ * - mode maintenance → maintenance.manage (Owner)
+ * - sisanya (branding, kontak, infrastruktur, pembayaran) → settings.manage (Admin)
+ */
 const MAINTENANCE_FIELDS = [
   'maintenanceMode',
   'maintenanceTitle',
@@ -42,9 +49,12 @@ const MAINTENANCE_FIELDS = [
   'maintenanceAllowedPaths',
 ] as const;
 
+const STATUS_FIELDS = ['platformStatus', 'services'] as const;
+
+/** GET /api/admin/settings — seluruh pengguna panel (Staff+) boleh membaca. */
 export async function GET(): Promise<Response> {
   try {
-    const { db } = await requireAdmin('settings.manage');
+    const { db } = await requireAdmin('settings.read');
     const settings = await db.settings.get();
     return apiOk(settings);
   } catch (error) {
@@ -52,10 +62,13 @@ export async function GET(): Promise<Response> {
   }
 }
 
-/** PUT /api/admin/settings — pengaturan platform. Mode maintenance: owner-only. */
+/**
+ * PUT /api/admin/settings — izin diperiksa per grup field:
+ * status layanan (Staff+), mode maintenance (Owner), sisanya (Admin+).
+ */
 export async function PUT(request: Request): Promise<Response> {
   try {
-    const { db, session } = await requireAdmin('settings.manage');
+    const { db, session } = await requireAdmin('settings.read');
     await requireWriteSecurity();
     const ip = await clientIp();
 
@@ -66,10 +79,18 @@ export async function PUT(request: Request): Promise<Response> {
       return apiError(422, 'VALIDATION_ERROR', first ? first.message : 'Data tidak valid.');
     }
 
+    const fields = Object.keys(parsed.data);
     const touchesMaintenance = MAINTENANCE_FIELDS.some((field) => field in parsed.data);
-    if (touchesMaintenance) {
-      assertPermission(session.role, 'maintenance.manage');
-    }
+    const touchesStatus = STATUS_FIELDS.some((field) => field in parsed.data);
+    const touchesGeneral = fields.some(
+      (field) =>
+        !MAINTENANCE_FIELDS.includes(field as (typeof MAINTENANCE_FIELDS)[number]) &&
+        !STATUS_FIELDS.includes(field as (typeof STATUS_FIELDS)[number]),
+    );
+
+    if (touchesMaintenance) assertPermission(session.role, 'maintenance.manage');
+    if (touchesStatus) assertPermission(session.role, 'status.manage');
+    if (touchesGeneral) assertPermission(session.role, 'settings.manage');
 
     const updated = await db.settings.update(parsed.data);
     await db.audit.log({
@@ -79,7 +100,7 @@ export async function PUT(request: Request): Promise<Response> {
       resource: 'settings',
       resourceId: 'main',
       ipAddress: ip,
-      metadata: { fields: Object.keys(parsed.data) },
+      metadata: { fields },
     });
     return apiOk(updated);
   } catch (error) {

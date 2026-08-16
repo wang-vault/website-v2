@@ -1,6 +1,9 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { TicketsManager } from '@/components/admin/tickets-manager';
 
-export default function AdminTicketsPage() {
+export default async function AdminTicketsPage() {
+  await requireAdminPage('tickets.read');
+
   return (
     <div className="space-y-6">
       <header>

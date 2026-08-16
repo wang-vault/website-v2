@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { getDb } from '@/lib/db';
 import { ApiErrorException } from '@/lib/api';
 import { generateId } from '@/lib/utils';
-import type { Role } from '@/types';
+import type { Permission } from '@/lib/auth/rbac';
 import type {
   AnnouncementRecord,
   BlogCategoryRecord,
@@ -38,7 +38,10 @@ export type CmsResourceName =
   | 'maintenanceWindows';
 
 export interface CmsResourceDefinition {
-  minimumRole: Role;
+  /** Izin minimum untuk MEMBACA resource (staff mendapat akses baca konten). */
+  readPermission: Permission;
+  /** Izin minimum untuk MENULIS (create/update/delete) resource. */
+  writePermission: Permission;
   idField: string;
   allowedFields: string[];
   validation: z.ZodType<Record<string, unknown>>;
@@ -46,7 +49,8 @@ export interface CmsResourceDefinition {
 
 export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = {
   blog: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'content.manage',
     idField: 'id',
     allowedFields: ['slug', 'title', 'excerpt', 'content', 'categoryId', 'tags', 'author', 'status', 'publishedAt'],
     validation: z.object({
@@ -62,7 +66,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   blogCategories: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'content.manage',
     idField: 'id',
     allowedFields: ['slug', 'name', 'description'],
     validation: z.object({
@@ -72,7 +77,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   knowledgeBase: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'content.manage',
     idField: 'id',
     allowedFields: ['slug', 'title', 'excerpt', 'content', 'category', 'tags', 'status', 'publishedAt'],
     validation: z.object({
@@ -87,7 +93,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   faq: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'content.manage',
     idField: 'id',
     allowedFields: ['question', 'answer', 'category', 'sortOrder', 'active'],
     validation: z.object({
@@ -99,7 +106,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   testimonials: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'content.manage',
     idField: 'id',
     allowedFields: ['name', 'role', 'content', 'rating', 'active'],
     validation: z.object({
@@ -111,7 +119,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   pages: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'content.manage',
     idField: 'id',
     allowedFields: ['slug', 'title', 'content', 'metaTitle', 'metaDescription'],
     validation: z.object({
@@ -123,7 +132,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   legal: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'legal.manage',
     idField: 'id',
     allowedFields: ['slug', 'title', 'content', 'version', 'publishedAt'],
     validation: z.object({
@@ -135,7 +145,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   announcements: {
-    minimumRole: 'admin',
+    readPermission: 'content.read',
+    writePermission: 'content.manage',
     idField: 'id',
     allowedFields: ['title', 'message', 'active', 'startsAt', 'endsAt'],
     validation: z.object({
@@ -147,7 +158,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   incidents: {
-    minimumRole: 'staff',
+    readPermission: 'status.read',
+    writePermission: 'status.manage',
     idField: 'id',
     allowedFields: ['title', 'description', 'status', 'severity', 'affectedServices', 'startedAt', 'resolvedAt', 'updates'],
     validation: z.object({
@@ -169,7 +181,8 @@ export const CMS_RESOURCE_MAP: Record<CmsResourceName, CmsResourceDefinition> = 
     }),
   },
   maintenanceWindows: {
-    minimumRole: 'staff',
+    readPermission: 'status.read',
+    writePermission: 'status.manage',
     idField: 'id',
     allowedFields: ['title', 'description', 'status', 'affectedServices', 'startsAt', 'endsAt'],
     validation: z.object({

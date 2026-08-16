@@ -1,9 +1,11 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { getDb } from '@/lib/db';
 import { StatCard } from '@/components/ui/misc';
 import { EmptyState } from '@/components/ui/state';
 import { formatRupiah } from '@/lib/utils';
 
 export default async function AdminAnalyticsPage() {
+  await requireAdminPage('analytics.read');
   const db = await getDb();
   const stats = await db.orders.stats();
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Select } from '@/components/ui/input';
@@ -44,7 +45,8 @@ const EMPTY_FORM: EmptyCouponForm = {
   applicableTiers: [],
 };
 
-export function CouponsManager() {
+/** Mode baca-saja aktif untuk peran tanpa izin coupons.manage (mis. Staff). */
+export function CouponsManager({ readOnly = false }: { readOnly?: boolean }) {
   const { toast } = useToast();
   const [coupons, setCoupons] = useState<CouponRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +96,7 @@ export function CouponsManager() {
   }, []);
 
   const save = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     try {
       const payload = {
@@ -128,10 +131,11 @@ export function CouponsManager() {
     } finally {
       setSaving(false);
     }
-  }, [editingId, form, load, toast]);
+  }, [editingId, form, load, readOnly, toast]);
 
   const remove = useCallback(
     async (coupon: CouponRecord) => {
+      if (readOnly) return;
       if (!window.confirm(`Hapus kupon ${coupon.code}? Tindakan ini dicatat di Audit Log.`)) return;
       try {
         const response = await fetch(`/api/admin/coupons/${coupon.id}`, {
@@ -146,7 +150,7 @@ export function CouponsManager() {
         toast({ variant: 'error', title: 'Jaringan bermasalah' });
       }
     },
-    [load, toast],
+    [load, readOnly, toast],
   );
 
   const toggleTier = useCallback((tier: Tier) => {
@@ -160,12 +164,21 @@ export function CouponsManager() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Buat Kupon
-        </Button>
-      </div>
+      {readOnly ? (
+        <Alert variant="info" title="Mode baca-saja">
+          <p>
+            Peran Anda dapat memeriksa kupon yang berlaku saat membantu pelanggan, tetapi membuat, mengubah, dan
+            menghapus kupon adalah wewenang Admin.
+          </p>
+        </Alert>
+      ) : (
+        <div className="flex justify-end">
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Buat Kupon
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <LoadingState label="Memuat kupon…" />
@@ -212,16 +225,18 @@ export function CouponsManager() {
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <Button variant="outline" size="sm" onClick={() => openEdit(coupon)}>
-                        Edit
+                        {readOnly ? 'Lihat' : 'Edit'}
                       </Button>
-                      <button
-                        type="button"
-                        onClick={() => void remove(coupon)}
-                        aria-label={`Hapus kupon ${coupon.code}`}
-                        className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </button>
+                      {readOnly ? null : (
+                        <button
+                          type="button"
+                          onClick={() => void remove(coupon)}
+                          aria-label={`Hapus kupon ${coupon.code}`}
+                          className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -234,10 +249,14 @@ export function CouponsManager() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingId ? 'Edit Kupon' : 'Buat Kupon'}
-        description="Validasi kupon selalu dilakukan server-side; nilai diskon tidak pernah berasal dari klien."
+        title={readOnly ? 'Detail Kupon' : editingId ? 'Edit Kupon' : 'Buat Kupon'}
+        description={
+          readOnly
+            ? 'Ditampilkan baca-saja — peran Anda tidak memiliki izin mengubah kupon.'
+            : 'Validasi kupon selalu dilakukan server-side; nilai diskon tidak pernah berasal dari klien.'
+        }
       >
-        <div className="space-y-4">
+        <fieldset disabled={readOnly} className="m-0 space-y-4 border-0 p-0">
           <Field label="Kode Kupon" required>
             <Input
               value={form.code}
@@ -328,14 +347,16 @@ export function CouponsManager() {
             onChange={(e) => setForm((c) => ({ ...c, active: e.target.checked }))}
             label="Kupon aktif"
           />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setModalOpen(false)}>
-              Batal
-            </Button>
+        </fieldset>
+        <div className="flex justify-end gap-2 pt-4">
+          <Button variant="ghost" onClick={() => setModalOpen(false)}>
+            {readOnly ? 'Tutup' : 'Batal'}
+          </Button>
+          {readOnly ? null : (
             <Button onClick={() => void save()} loading={saving}>
               Simpan
             </Button>
-          </div>
+          )}
         </div>
       </Modal>
     </div>

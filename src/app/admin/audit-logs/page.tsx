@@ -1,6 +1,9 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { AuditLogsManager } from '@/components/admin/audit-logs-manager';
 
-export default function AdminAuditLogsPage() {
+export default async function AdminAuditLogsPage() {
+  await requireAdminPage('audit.read');
+
   return (
     <div className="space-y-6">
       <header>

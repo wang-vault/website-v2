@@ -36,7 +36,14 @@ function getCsrfToken(): string {
 const PAGE_SIZE = 25;
 const ROLES: Role[] = ['customer', 'staff', 'admin', 'owner'];
 
-export function CustomersManager({ currentRole }: { currentRole: Role }) {
+export interface CustomersManagerProps {
+  /** Izin customers.update — Admin ke atas. */
+  canUpdate: boolean;
+  /** Izin roles.manage — Owner saja. */
+  canManageRoles: boolean;
+}
+
+export function CustomersManager({ canUpdate, canManageRoles }: CustomersManagerProps) {
   const { toast } = useToast();
   const [items, setItems] = useState<CustomerRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -49,8 +56,6 @@ export function CustomersManager({ currentRole }: { currentRole: Role }) {
   const [pendingRole, setPendingRole] = useState<Role>('customer');
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef<number | null>(null);
-
-  const isOwner = currentRole === 'owner';
 
   const load = useCallback(
     async (targetPage: number, targetRole: string, targetQuery: string) => {
@@ -89,6 +94,7 @@ export function CustomersManager({ currentRole }: { currentRole: Role }) {
 
   const changeRole = useCallback(
     async (customer: CustomerRow, next: Role) => {
+      if (!canManageRoles) return;
       setSaving(true);
       try {
         const response = await fetch(`/api/admin/customers/${customer.id}`, {
@@ -110,7 +116,7 @@ export function CustomersManager({ currentRole }: { currentRole: Role }) {
         setSaving(false);
       }
     },
-    [load, page, roleFilter, debouncedQuery, toast],
+    [canManageRoles, load, page, roleFilter, debouncedQuery, toast],
   );
 
   return (
@@ -156,7 +162,9 @@ export function CustomersManager({ currentRole }: { currentRole: Role }) {
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Verifikasi</th>
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Terdaftar</th>
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Login Terakhir</th>
-                <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Aksi</th>
+                {canManageRoles ? (
+                  <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Aksi</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -176,37 +184,40 @@ export function CustomersManager({ currentRole }: { currentRole: Role }) {
                   </td>
                   <td className="px-4 py-3 text-xs text-text-secondary">{formatDate(customer.createdAt)}</td>
                   <td className="px-4 py-3 text-xs text-text-secondary">{formatDateTime(customer.lastLoginAt)}</td>
-                  <td className="px-4 py-3">
-                    {editingId === customer.id ? (
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={pendingRole}
-                          onChange={(e) => setPendingRole(e.target.value as Role)}
-                          options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
-                          aria-label={`Role untuk ${customer.email}`}
-                          className="h-8 w-auto py-0 text-xs"
-                        />
-                        <Button size="sm" loading={saving} onClick={() => void changeRole(customer, pendingRole)}>
-                          Simpan
+                  {canManageRoles ? (
+                    <td className="px-4 py-3">
+                      {editingId === customer.id ? (
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={pendingRole}
+                            onChange={(e) => setPendingRole(e.target.value as Role)}
+                            options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+                            aria-label={`Role untuk ${customer.email}`}
+                            className="h-8 w-auto py-0 text-xs"
+                          />
+                          <Button size="sm" loading={saving} onClick={() => void changeRole(customer, pendingRole)}>
+                            Simpan
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
+                            Batal
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={customer.role === 'owner'}
+                          title={customer.role === 'owner' ? 'Role Owner tidak dapat diubah.' : undefined}
+                          onClick={() => {
+                            setPendingRole(customer.role);
+                            setEditingId(customer.id);
+                          }}
+                        >
+                          Ubah Role
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>
-                          Batal
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!isOwner && customer.role === 'owner'}
-                        onClick={() => {
-                          setPendingRole(customer.role);
-                          setEditingId(customer.id);
-                        }}
-                      >
-                        Ubah Role
-                      </Button>
-                    )}
-                  </td>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -216,7 +227,11 @@ export function CustomersManager({ currentRole }: { currentRole: Role }) {
 
       <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       <p className="text-xs text-text-muted">
-        Perubahan role hanya dapat dilakukan oleh Owner, dan role owner tidak dapat diturunkan. Semua perubahan dicatat di Audit Log.
+        {canManageRoles
+          ? 'Perubahan role hanya dapat dilakukan oleh Owner, dan role Owner tidak dapat diturunkan. Semua perubahan dicatat di Audit Log.'
+          : canUpdate
+            ? 'Peran Anda dapat melihat dan memperbarui data pelanggan; perubahan role adalah wewenang Owner dan dicatat di Audit Log.'
+            : 'Tampilan baca-saja. Perubahan data pelanggan adalah wewenang Admin, dan perubahan role wewenang Owner.'}
       </p>
     </div>
   );

@@ -2,10 +2,13 @@ import { apiError, apiOk, handleApiError } from '@/lib/api';
 import { requireAdmin, requireWriteSecurity, type AdminContext } from '@/lib/api/guards';
 import { cmsDelete, cmsList, cmsUpdate, getResourceDefinition } from '@/lib/cms';
 
-function requireCmsAccess(resource: string): Promise<AdminContext> {
-  const def = getResourceDefinition(resource);
-  const permission = def.minimumRole === 'staff' ? 'status.manage' : 'content.manage';
-  return requireAdmin(permission);
+/** Baca memakai readPermission, tulis memakai writePermission resource. */
+function requireCmsRead(resource: string): Promise<AdminContext> {
+  return requireAdmin(getResourceDefinition(resource).readPermission);
+}
+
+function requireCmsWrite(resource: string): Promise<AdminContext> {
+  return requireAdmin(getResourceDefinition(resource).writePermission);
 }
 
 export async function GET(
@@ -15,7 +18,7 @@ export async function GET(
   try {
     const { resource, id } = await params;
     getResourceDefinition(resource);
-    await requireCmsAccess(resource);
+    await requireCmsRead(resource);
     const items = await cmsList(resource);
     const item = items.find((entry) => {
       const record = entry as { id?: string };
@@ -35,7 +38,7 @@ export async function PATCH(
   try {
     const { resource, id } = await params;
     getResourceDefinition(resource);
-    const { session } = await requireCmsAccess(resource);
+    const { session } = await requireCmsWrite(resource);
     await requireWriteSecurity();
 
     const body: unknown = await request.json().catch(() => null);
@@ -56,7 +59,7 @@ export async function DELETE(
   try {
     const { resource, id } = await params;
     getResourceDefinition(resource);
-    const { session } = await requireCmsAccess(resource);
+    const { session } = await requireCmsWrite(resource);
     await requireWriteSecurity();
     await cmsDelete(resource, id, session.email);
     return apiOk({ deleted: true });

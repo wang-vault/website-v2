@@ -14,6 +14,7 @@ import type {
   PricingRulesRecord,
   ProductRecord,
   ProfileRecord,
+  Role,
   SettingsRecord,
   UserRecord,
 } from '@/types';
@@ -30,13 +31,14 @@ const envAdminPassword = process.env.ADMIN_PASSWORD?.trim() || '';
 
 /** Kredensial development default (HANYA untuk mode JSON lokal, wajib diganti). */
 const DEV_ADMIN_PASSWORD = 'WangStoreDevAdmin2026!';
+const DEV_STAFF_PASSWORD = 'WangStoreDevStaff2026!';
 
-function adminUser(): Omit<UserRecord, 'passwordHash'> {
+function panelUser(email: string, role: Role): Omit<UserRecord, 'passwordHash'> {
   const now = toIso();
   return {
     id: generateId('us'),
-    email: envAdminEmail,
-    role: 'owner',
+    email,
+    role,
     emailVerified: true,
     emailVerificationToken: null,
     resetToken: null,
@@ -1237,7 +1239,7 @@ const ANNOUNCEMENTS: AnnouncementRecord[] = [
 export async function buildSeedData(): Promise<JsonCollections> {
   const password = envAdminPassword || DEV_ADMIN_PASSWORD;
   const passwordHash = await bcrypt.hash(password, 12);
-  const user: UserRecord = { ...adminUser(), passwordHash };
+  const user: UserRecord = { ...panelUser(envAdminEmail, 'owner'), passwordHash };
   const profile: ProfileRecord = {
     userId: user.id,
     fullName: 'Administrator WangStore',
@@ -1247,9 +1249,40 @@ export async function buildSeedData(): Promise<JsonCollections> {
     updatedAt: toIso(),
   };
 
+  // Akun contoh Admin & Staff — HANYA di datastore JSON pengembangan lokal,
+  // agar perbedaan wewenang kedua role dapat diuji tanpa membuat akun manual.
+  // Di production (Supabase) akun panel dibuat Owner lewat halaman Pelanggan.
+  const staffPasswordHash = await bcrypt.hash(process.env.STAFF_PASSWORD?.trim() || DEV_STAFF_PASSWORD, 12);
+  const adminAccount: UserRecord = {
+    ...panelUser('admin.demo@wangstore.id', 'admin'),
+    passwordHash: staffPasswordHash,
+  };
+  const staffAccount: UserRecord = {
+    ...panelUser('staff.demo@wangstore.id', 'staff'),
+    passwordHash: staffPasswordHash,
+  };
+  const panelProfiles: ProfileRecord[] = [
+    {
+      userId: adminAccount.id,
+      fullName: 'Admin WangStore',
+      whatsapp: '',
+      discord: '',
+      bio: 'Akun contoh peran Admin (konfigurasi harga, katalog, konten, pengaturan).',
+      updatedAt: toIso(),
+    },
+    {
+      userId: staffAccount.id,
+      fullName: 'Staff WangStore',
+      whatsapp: '',
+      discord: '',
+      bio: 'Akun contoh peran Staff (proses order, tiket, status layanan).',
+      updatedAt: toIso(),
+    },
+  ];
+
   return {
-    users: [user],
-    profiles: [profile],
+    users: [user, adminAccount, staffAccount],
+    profiles: [profile, ...panelProfiles],
     products: PRODUCTS,
     packages: packages(),
     pricing: pricingRules(),

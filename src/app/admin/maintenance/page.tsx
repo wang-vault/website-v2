@@ -1,26 +1,13 @@
-import { getSession } from '@/lib/auth/session';
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { getDb } from '@/lib/db';
 import { SettingsForm } from '@/components/admin/settings-form';
 import { Alert } from '@/components/ui/alert';
 
 export default async function AdminMaintenancePage() {
-  const sessionContext = await getSession();
+  // Khusus Owner — peran lain diarahkan ke halaman penjelasan akses ditolak.
+  await requireAdminPage('maintenance.manage');
   const db = await getDb();
   const settings = await db.settings.get();
-  const isOwner = sessionContext?.session.role === 'owner';
-
-  if (!isOwner) {
-    return (
-      <div className="space-y-6">
-        <header>
-          <h1 className="text-2xl font-bold tracking-tight text-text-primary">Mode Maintenance</h1>
-        </header>
-        <Alert variant="error" title="Khusus Owner">
-          <p>Mode maintenance hanya dapat dikelola oleh Owner. Hubungi owner WangStore untuk perubahan ini.</p>
-        </Alert>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">

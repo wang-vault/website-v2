@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:seed": "tsx scripts/seed-admin.ts",
+    "db:role": "tsx scripts/set-role.ts",
     "smoke": "node scripts/smoke-test.mjs",
     "ci": "npm run typecheck && npm run lint && npm run test && npm run build"
   },

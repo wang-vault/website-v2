@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -63,7 +64,16 @@ const LIST_LABELS: Record<string, Record<string, string>> = {
   },
 };
 
-export function CmsManager({ config }: { config: CmsManagerConfig }) {
+export interface CmsManagerProps {
+  config: CmsManagerConfig;
+  /**
+   * Mode baca-saja untuk peran tanpa izin content.manage (mis. Staff).
+   * Hanya kenyamanan UI — API tetap menolak permintaan tulis tanpa izin.
+   */
+  readOnly?: boolean;
+}
+
+export function CmsManager({ config, readOnly = false }: CmsManagerProps) {
   const { toast } = useToast();
   const [items, setItems] = useState<CmsRecord[]>([]);
   const [selectOptions, setSelectOptions] = useState<Record<string, { value: string; label: string }[]>>({});
@@ -174,6 +184,7 @@ export function CmsManager({ config }: { config: CmsManagerConfig }) {
   }, [config.fields, form, items, editingId]);
 
   const save = useCallback(async () => {
+    if (readOnly) return;
     // Validasi required sederhana.
     for (const field of config.fields) {
       if (field.required) {
@@ -208,10 +219,11 @@ export function CmsManager({ config }: { config: CmsManagerConfig }) {
     } finally {
       setSaving(false);
     }
-  }, [buildPayload, config, editingId, form, load, toast]);
+  }, [buildPayload, config, editingId, form, load, readOnly, toast]);
 
   const remove = useCallback(
     async (record: CmsRecord) => {
+      if (readOnly) return;
       if (!window.confirm('Hapus data ini? Tindakan dicatat di Audit Log.')) return;
       try {
         const response = await fetch(`/api/admin/cms/${config.resource}/${record.id}`, {
@@ -226,7 +238,7 @@ export function CmsManager({ config }: { config: CmsManagerConfig }) {
         toast({ variant: 'error', title: 'Jaringan bermasalah' });
       }
     },
-    [config.resource, load, toast],
+    [config.resource, load, readOnly, toast],
   );
 
   const statusLabel = useCallback(
@@ -274,12 +286,21 @@ export function CmsManager({ config }: { config: CmsManagerConfig }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah
-        </Button>
-      </div>
+      {readOnly ? (
+        <Alert variant="info" title="Mode baca-saja">
+          <p>
+            Peran Anda dapat melihat data ini sebagai rujukan saat melayani pelanggan, tetapi menambah, mengubah,
+            dan menghapus konten adalah wewenang Admin.
+          </p>
+        </Alert>
+      ) : (
+        <div className="flex justify-end">
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Tambah
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <LoadingState label="Memuat data…" />
@@ -311,9 +332,9 @@ export function CmsManager({ config }: { config: CmsManagerConfig }) {
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <Button variant="outline" size="sm" onClick={() => openEdit(record)}>
-                        Edit
+                        {readOnly ? 'Lihat' : 'Edit'}
                       </Button>
-                      {config.deletable ? (
+                      {config.deletable && !readOnly ? (
                         <button
                           type="button"
                           onClick={() => void remove(record)}
@@ -335,18 +356,26 @@ export function CmsManager({ config }: { config: CmsManagerConfig }) {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingId ? 'Edit Data' : 'Tambah Data'}
-        description="Perubahan langsung tersimpan dan dicatat di Audit Log."
+        title={readOnly ? 'Detail Data' : editingId ? 'Edit Data' : 'Tambah Data'}
+        description={
+          readOnly
+            ? 'Ditampilkan baca-saja — peran Anda tidak memiliki izin mengubah konten.'
+            : 'Perubahan langsung tersimpan dan dicatat di Audit Log.'
+        }
         className="max-w-2xl"
       >
-        {formTabs ?? plainForm}
+        <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0">
+          {formTabs ?? plainForm}
+        </fieldset>
         <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
           <Button variant="ghost" onClick={() => setModalOpen(false)}>
-            Batal
+            {readOnly ? 'Tutup' : 'Batal'}
           </Button>
-          <Button onClick={() => void save()} loading={saving}>
-            Simpan
-          </Button>
+          {readOnly ? null : (
+            <Button onClick={() => void save()} loading={saving}>
+              Simpan
+            </Button>
+          )}
         </div>
       </Modal>
     </div>

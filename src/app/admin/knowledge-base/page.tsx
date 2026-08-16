@@ -1,3 +1,4 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { CmsManager, type CmsManagerConfig } from '@/components/admin/cms-manager';
 import { KB_CATEGORIES } from '@/types';
 
@@ -38,7 +39,9 @@ const KB_CONFIG: CmsManagerConfig = {
   ],
 };
 
-export default function AdminKnowledgeBasePage() {
+export default async function AdminKnowledgeBasePage() {
+  const { can } = await requireAdminPage('content.read');
+
   return (
     <div className="space-y-6">
       <header>
@@ -48,7 +51,7 @@ export default function AdminKnowledgeBasePage() {
           Troubleshooting, Akun, dan Kebijakan.
         </p>
       </header>
-      <CmsManager config={KB_CONFIG} />
+      <CmsManager config={KB_CONFIG} readOnly={!can('content.manage')} />
     </div>
   );
 }

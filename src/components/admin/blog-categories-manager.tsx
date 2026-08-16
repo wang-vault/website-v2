@@ -14,7 +14,8 @@ function getCsrfToken(): string {
   return match?.[1] ?? '';
 }
 
-export function BlogCategoriesManager() {
+/** Mode baca-saja aktif untuk peran tanpa izin content.manage (mis. Staff). */
+export function BlogCategoriesManager({ readOnly = false }: { readOnly?: boolean }) {
   const { toast } = useToast();
   const [items, setItems] = useState<CmsRecord[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -36,6 +37,7 @@ export function BlogCategoriesManager() {
   }, [load]);
 
   const save = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     try {
       const response = await fetch('/api/admin/cms/blogCategories', {
@@ -57,10 +59,11 @@ export function BlogCategoriesManager() {
     } finally {
       setSaving(false);
     }
-  }, [form, load, toast]);
+  }, [form, load, readOnly, toast]);
 
   const remove = useCallback(
     async (id: string) => {
+      if (readOnly) return;
       if (!window.confirm('Hapus kategori ini?')) return;
       try {
         await fetch(`/api/admin/cms/blogCategories/${id}`, {
@@ -73,17 +76,19 @@ export function BlogCategoriesManager() {
         toast({ variant: 'error', title: 'Jaringan bermasalah' });
       }
     },
-    [load, toast],
+    [load, readOnly, toast],
   );
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">Kategori Blog</h3>
-        <Button size="sm" onClick={() => setModalOpen(true)}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah Kategori
-        </Button>
+        {readOnly ? null : (
+          <Button size="sm" onClick={() => setModalOpen(true)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Tambah Kategori
+          </Button>
+        )}
       </div>
       <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
         {items.map((item) => (
@@ -92,14 +97,16 @@ export function BlogCategoriesManager() {
               <p className="text-sm font-medium text-text-primary">{String(item.name ?? '')}</p>
               <p className="font-mono text-xs text-text-muted">{String(item.slug ?? '')}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => void remove(item.id)}
-              aria-label="Hapus kategori"
-              className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
-            >
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-            </button>
+            {readOnly ? null : (
+              <button
+                type="button"
+                onClick={() => void remove(item.id)}
+                aria-label="Hapus kategori"
+                className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
           </li>
         ))}
         {items.length === 0 ? <li className="px-4 py-6 text-center text-sm text-text-muted">Belum ada kategori.</li> : null}
