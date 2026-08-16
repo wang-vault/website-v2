@@ -42,7 +42,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
 
   { href: '/admin/pricing', label: 'Formula Harga', icon: 'pricing', section: 'katalog', permission: 'pricing.read', writePermission: 'pricing.manage' },
   { href: '/admin/coupons', label: 'Kupon & Promosi', icon: 'coupons', section: 'katalog', permission: 'coupons.read', writePermission: 'coupons.manage' },
-  { href: '/admin/products', label: 'Produk & Paket', icon: 'products', section: 'katalog', permission: 'products.read', writePermission: 'products.manage' },
+  { href: '/admin/products', label: 'Produk, Paket & VPS', icon: 'products', section: 'katalog', permission: 'products.read', writePermission: 'products.manage' },
   { href: '/admin/analytics', label: 'Analitik', icon: 'analytics', section: 'katalog', permission: 'analytics.read' },
 
   { href: '/admin/blog', label: 'Blog', icon: 'blog', section: 'konten', permission: 'content.read', writePermission: 'content.manage' },

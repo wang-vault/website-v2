@@ -121,6 +121,22 @@ Penegakan berlapis: middleware (edge) → guard halaman `requireAdminPage()` (`s
 admin menerima prop `readOnly` untuk role tanpa izin tulis. Matriks izin hidup dapat dilihat di `/admin/roles`.
 RBAC diverifikasi ulang di **setiap** API route — bukan hanya di UI.
 
+## 8b. Katalog & Ketersediaan Layanan
+
+Dua jenis layanan dijual melalui satu alur order:
+
+| Layanan | Katalog | Penyimpanan |
+| --- | --- | --- |
+| Minecraft tier Low | konfigurasi custom + formula harga | `pricing_rules` |
+| Minecraft tier Medium & High | paket tetap | `packages` (kolom `tier`) |
+| VPS | paket tetap (vCPU, RAM, storage, transfer, OS, lokasi) | `vps_packages` |
+
+`orders.service` (`minecraft` | `vps`) menandai jenis layanan; `orders.tier` bernilai null untuk order VPS.
+
+Ketersediaan tiap katalog disimpan pada `settings.catalogStatus` (`available` | `ongoing` | `unavailable`) dan
+dibaca lewat `src/lib/catalog/`. Order service dan endpoint estimasi memverifikasi status ini sebelum
+menghitung harga, sehingga membuka/menutup penjualan cukup dilakukan Admin dari panel tanpa deploy ulang.
+
 ## 9. Generic CMS
 
 `src/lib/cms/` mendefinisikan resource map (`blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows`) dengan per resource: collection, identity field, allowed fields, skema Zod, serta `readPermission` dan `writePermission` terpisah. Dua route (`/api/admin/cms/[resource]` dan `/api/admin/cms/[resource]/[id]`) melayani seluruh modul — tidak ada 20 endpoint duplikat. UI admin memakai satu `CmsManager` yang digerakkan konfigurasi.

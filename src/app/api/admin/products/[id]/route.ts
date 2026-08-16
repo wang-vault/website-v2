@@ -9,6 +9,7 @@ const productPatchSchema = z.object({
   description: z.string().trim().min(5).max(2000).optional(),
   tier: z.enum(['low', 'medium', 'high']).optional(),
   status: z.enum(['active', 'inactive']).optional(),
+  catalogKey: z.enum(['low', 'medium', 'high', 'vps']).nullable().optional(),
   packageId: z.string().max(80).nullable().optional(),
   price: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
   visibility: z.enum(['public', 'hidden']).optional(),

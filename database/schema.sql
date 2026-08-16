@@ -81,6 +81,9 @@ create table if not exists products (
   description text not null default '',
   tier text not null check (tier in ('low','medium','high')),
   status text not null default 'active' check (status in ('active','inactive')),
+  -- Katalog yang dijual untuk produk ini: low|medium|high|vps, atau null
+  -- untuk entri informasional (layanan yang belum ditawarkan).
+  "catalogKey" text check ("catalogKey" in ('low','medium','high','vps')),
   "packageId" text,
   price bigint,
   visibility text not null default 'public' check (visibility in ('public','hidden')),
@@ -106,6 +109,29 @@ create table if not exists packages (
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()
 );
+
+-- ───────────────────────────────────────────── paket VPS
+-- Katalog VPS terpisah dari paket Minecraft: atribut yang dijual berbeda
+-- (bandwidth, sistem operasi, lokasi) dan harganya final (bukan formula).
+create table if not exists vps_packages (
+  id text primary key,
+  label text not null,
+  description text not null default '',
+  vcpu integer not null,
+  "ramGb" integer not null,
+  "storageGb" integer not null,
+  "bandwidthTb" integer not null default 0,
+  "operatingSystems" text[] not null default '{}',
+  locations text[] not null default '{}',
+  price bigint not null,
+  popular boolean not null default false,
+  active boolean not null default true,
+  "sortOrder" integer not null default 0,
+  "createdAt" timestamptz not null default now(),
+  "updatedAt" timestamptz not null default now()
+);
+
+create index if not exists idx_vps_packages_active on vps_packages (active);
 
 -- ───────────────────────────────────────────── pricing
 create table if not exists pricing_rules (
@@ -161,7 +187,10 @@ create table if not exists orders (
   "customerEmail" text not null,
   "serverName" text not null,
   notes text not null default '',
-  tier text not null check (tier in ('low','medium','high')),
+  -- Layanan yang dipesan. Tier hanya berlaku untuk Minecraft; order VPS
+  -- memiliki tier null dan mereferensikan paket pada vps_packages.
+  service text not null default 'minecraft' check (service in ('minecraft','vps')),
+  tier text check (tier in ('low','medium','high')),
   "packageId" text,
   cpu integer not null,
   "ramGb" integer not null,
@@ -391,6 +420,9 @@ create table if not exists settings (
   "maintenanceAllowedPaths" text[] not null default '{}',
   "platformStatus" text not null default 'operational' check ("platformStatus" in ('operational','degraded','outage','maintenance')),
   services jsonb not null default '[]'::jsonb,
+  -- Ketersediaan katalog (tier Minecraft + VPS): available | ongoing | unavailable.
+  "catalogStatus" jsonb not null default
+    '{"low":"available","medium":"available","high":"available","vps":"available"}'::jsonb,
   "infrastructureNote" text not null default '',
   locations text[] not null default '{}',
   "paymentInstructions" text not null default '',
@@ -428,6 +460,7 @@ alter table users enable row level security;
 alter table profiles enable row level security;
 alter table products enable row level security;
 alter table packages enable row level security;
+alter table vps_packages enable row level security;
 alter table pricing_rules enable row level security;
 alter table coupons enable row level security;
 alter table coupon_usages enable row level security;
@@ -454,6 +487,7 @@ alter table rate_limits enable row level security;
 -- Publik hanya boleh membaca data yang memang publik.
 create policy "baca publik products" on products for select using (status = 'active' and visibility = 'public');
 create policy "baca publik packages" on packages for select using (active = true);
+create policy "baca publik vps packages" on vps_packages for select using (active = true);
 create policy "baca publik blog" on blog_posts for select using (status = 'published');
 create policy "baca publik kb" on knowledge_articles for select using (status = 'published');
 create policy "baca publik faq" on faq_items for select using (active = true);
@@ -507,7 +541,7 @@ declare
 begin
   insert into orders (
     id, "userId", "customerName", "customerWhatsapp", "customerEmail",
-    "serverName", notes, tier, "packageId", cpu, "ramGb", "storageGb",
+    "serverName", notes, service, tier, "packageId", cpu, "ramGb", "storageGb",
     "unitPrice", "discountAmount", "couponCode", total, status,
     "ipAddress", "accessTokenHash", "createdAt", "updatedAt"
   ) values (
@@ -518,7 +552,8 @@ begin
     v_order ->> 'customerEmail',
     v_order ->> 'serverName',
     coalesce(v_order ->> 'notes', ''),
-    v_order ->> 'tier',
+    coalesce(v_order ->> 'service', 'minecraft'),
+    nullif(v_order ->> 'tier', '')::text,
     nullif(v_order ->> 'packageId', '')::text,
     (v_order ->> 'cpu')::integer,
     (v_order ->> 'ramGb')::integer,
@@ -642,3 +677,20 @@ begin
   return jsonb_build_object('allowed', true, 'retry_after', 0);
 end;
 $$;
+
+-- ============================================================================
+-- MIGRASI IDEMPOTEN — aman dijalankan ulang pada database yang sudah ada
+-- (menyusul penambahan katalog VPS dan pengaturan ketersediaan layanan).
+-- ============================================================================
+alter table orders add column if not exists service text not null default 'minecraft';
+alter table orders drop constraint if exists orders_service_check;
+alter table orders add constraint orders_service_check check (service in ('minecraft','vps'));
+alter table orders alter column tier drop not null;
+
+alter table settings add column if not exists "catalogStatus" jsonb not null default
+  '{"low":"available","medium":"available","high":"available","vps":"available"}'::jsonb;
+
+alter table products add column if not exists "catalogKey" text;
+alter table products drop constraint if exists products_catalogkey_check;
+alter table products add constraint products_catalogkey_check
+  check ("catalogKey" is null or "catalogKey" in ('low','medium','high','vps'));

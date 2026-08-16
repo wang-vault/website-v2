@@ -15,6 +15,8 @@ import {
   Wallet,
 } from 'lucide-react';
 import { getDb } from '@/lib/db';
+import { resolveCatalogStatus } from '@/lib/catalog';
+import { CATALOG_LABELS, TIER_STATUS_LABELS } from '@/types';
 import { formatRupiahPerMonth, truncate } from '@/lib/utils';
 import { ButtonLink } from '@/components/ui/button-link';
 import { Badge } from '@/components/ui/badge';
@@ -107,6 +109,11 @@ export default async function HomePage() {
   ]);
 
   const activePackages = packages.filter((p) => p.active).sort((a, b) => a.sortOrder - b.sortOrder);
+  // Badge & tautan katalog mengikuti ketersediaan nyata yang diatur admin.
+  const catalogStatus = resolveCatalogStatus(settings);
+  const orderableCatalog = (Object.keys(catalogStatus) as (keyof typeof catalogStatus)[]).filter(
+    (key) => catalogStatus[key] === 'available',
+  );
   const topFaq = faq.slice(0, 5);
 
   const organizationJsonLd = {
@@ -154,14 +161,16 @@ export default async function HomePage() {
                 Buat Server
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </ButtonLink>
-              <ButtonLink href="#paket" variant="outline" size="lg">
-                Lihat Paket
+              <ButtonLink href="/vps" variant="outline" size="lg">
+                Paket VPS
               </ButtonLink>
             </div>
             <p className="mt-6 text-xs leading-relaxed text-text-muted">
-              Minecraft Hosting tersedia. VPS, Dedicated Server, dan Panel Hosting sedang dipersiapkan —{' '}
+              {orderableCatalog.length > 0
+                ? `Tersedia sekarang: ${orderableCatalog.map((key) => CATALOG_LABELS[key]).join(', ')}. `
+                : 'Katalog layanan sedang disiapkan. '}
               <Link href="/status" className="underline underline-offset-2 hover:text-text-primary">
-                lihat status layanan
+                Lihat status layanan
               </Link>
               .
             </p>
@@ -182,10 +191,20 @@ export default async function HomePage() {
               <CardContent className="flex flex-1 flex-col">
                 <div className="flex items-start justify-between gap-3">
                   <Package className="h-5 w-5 text-text-muted" aria-hidden="true" />
-                  {product.tier === 'medium' ? (
-                    <Badge variant="warning">Ongoing</Badge>
+                  {product.catalogKey === null ? (
+                    <Badge variant="neutral">Menyusul</Badge>
                   ) : (
-                    <Badge variant="success">Tersedia</Badge>
+                    <Badge
+                      variant={
+                        catalogStatus[product.catalogKey] === 'available'
+                          ? 'success'
+                          : catalogStatus[product.catalogKey] === 'ongoing'
+                            ? 'warning'
+                            : 'neutral'
+                      }
+                    >
+                      {TIER_STATUS_LABELS[catalogStatus[product.catalogKey]]}
+                    </Badge>
                   )}
                 </div>
                 <h3 className="mt-3 text-base font-semibold text-text-primary">{product.name}</h3>
@@ -193,14 +212,15 @@ export default async function HomePage() {
                   {product.description}
                 </p>
                 <div className="mt-4">
-                  {product.tier === 'medium' ? (
+                  {product.catalogKey === null || catalogStatus[product.catalogKey] !== 'available' ? (
                     <span className="text-xs text-text-muted">Belum tersedia untuk pemesanan</span>
                   ) : (
                     <Link
-                      href="/server-builder"
+                      href={product.catalogKey === 'vps' ? '/vps' : '/server-builder'}
                       className="inline-flex items-center gap-1 text-sm font-medium text-text-primary underline-offset-4 hover:underline"
                     >
-                      Konfigurasi <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      {product.catalogKey === 'vps' ? 'Lihat paket VPS' : 'Konfigurasi'}{' '}
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                     </Link>
                   )}
                 </div>

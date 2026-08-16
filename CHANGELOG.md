@@ -9,6 +9,25 @@ dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 ### Ditambahkan
 
+- **Katalog VPS** — tabel `vps_packages` (vCPU, RAM, penyimpanan, kuota transfer, sistem operasi, lokasi,
+  harga final), halaman publik **`/vps`** dengan pemilihan paket + formulir pemesanan, endpoint publik
+  `GET /api/vps-packages`, serta CRUD admin `/api/admin/vps-packages`.
+- **Pemesanan VPS memakai alur order yang sama** — `POST /api/orders` menerima `service: 'minecraft' | 'vps'`;
+  order VPS tercatat di dashboard pelanggan, panel admin, audit log, dan pesan WhatsApp seperti order lain.
+  Harga tetap dihitung ulang server-side dari katalog.
+- **Tier Medium aktif sebagai paket tetap** — paket Medium dikelola admin (tabel `packages`, kolom `tier`),
+  dapat dipilih di Server Builder, dan dapat dipesan seperti tier High.
+- **Pengaturan Ketersediaan Layanan** (Panel Admin → Produk, Paket & VPS) — status setiap katalog
+  (Minecraft Low/Medium/High dan VPS) dapat diubah antara *Tersedia*, *Sedang Disiapkan*, dan *Tidak Tersedia*
+  tanpa deploy ulang. Status disimpan di `settings.catalogStatus` dan diverifikasi server-side saat order
+  dibuat (`409 TIER_ONGOING` / `409 TIER_UNAVAILABLE`).
+- **Modul `src/lib/catalog/`** — sumber kebenaran status katalog beserta helper label order lintas layanan,
+  dengan 10 unit test baru.
+- Kolom `products.catalogKey` — menautkan entri katalog pemasaran ke layanan yang benar-benar dijual; beranda
+  kini menampilkan badge ketersediaan dan tautan pemesanan yang mengikuti keadaan sebenarnya.
+- Navigasi, footer, dan sitemap memuat halaman VPS; 15 smoke check baru untuk katalog VPS, tier Medium, dan
+  kontrol ketersediaan.
+
 - **Matriks izin RBAC eksplisit per peran** (`src/lib/auth/rbac.ts`) — daftar izin setiap role ditulis satu per
   satu (`ROLE_PERMISSIONS`) dengan pewarisan eksplisit Staff → Admin → Owner, menggantikan pengecekan berbasis
   angka hierarki saja. Ditambah metadata `ROLE_DEFINITIONS`, `PERMISSION_LABELS`, dan `PERMISSION_GROUPS`.
@@ -31,6 +50,13 @@ dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 ### Diubah
 
+- `orders` memiliki kolom `service`, dan `orders.tier` kini nullable (null untuk order VPS) — disertai
+  migrasi idempoten di `database/schema.sql`.
+- `PUT /api/admin/settings` menerima grup field `catalogStatus` dengan izin `products.manage`.
+- `GET /api/pricing` mengembalikan paket Medium/High/VPS dari basis data beserta `catalogStatus`; endpoint
+  estimasi memakai status yang sama.
+- Server Builder membaca ketersediaan tier dari pengaturan admin dan menampilkan pemilih paket untuk setiap
+  tier bermode paket (Medium & High).
 - `PUT /api/admin/settings` memeriksa izin **per grup field**: status layanan → Staff (`status.manage`),
   mode maintenance → Owner (`maintenance.manage`), sisanya → Admin (`settings.manage`). Sebelumnya Staff tidak
   dapat memperbarui status layanan meskipun itu tugas operasionalnya.

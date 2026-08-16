@@ -11,8 +11,8 @@ import { Tabs } from '@/components/ui/tabs';
 import { EmptyState, LoadingState } from '@/components/ui/state';
 import { useToast } from '@/components/ui/toast';
 import { formatRupiah } from '@/lib/utils';
-import { TIER_LABELS } from '@/types';
-import type { PackageRecord, ProductRecord, Tier } from '@/types';
+import { CATALOG_LABELS, TIER_LABELS } from '@/types';
+import type { CatalogKey, PackageRecord, ProductRecord, Tier } from '@/types';
 
 function getCsrfToken(): string {
   if (typeof document === 'undefined') return '';
@@ -25,6 +25,8 @@ interface ProductForm {
   name: string;
   description: string;
   tier: Tier;
+  /** '' = entri informasional tanpa katalog yang dijual. */
+  catalogKey: CatalogKey | '';
   status: 'active' | 'inactive';
   visibility: 'public' | 'hidden';
   sortOrder: string;
@@ -35,6 +37,7 @@ const EMPTY_PRODUCT: ProductForm = {
   name: '',
   description: '',
   tier: 'low',
+  catalogKey: '',
   status: 'active',
   visibility: 'public',
   sortOrder: '0',
@@ -43,6 +46,7 @@ const EMPTY_PRODUCT: ProductForm = {
 interface PackageForm {
   id: string;
   label: string;
+  tier: 'medium' | 'high';
   cpu: string;
   ramGb: string;
   storageGb: string;
@@ -55,6 +59,7 @@ interface PackageForm {
 const EMPTY_PACKAGE: PackageForm = {
   id: '',
   label: '',
+  tier: 'high',
   cpu: '4',
   ramGb: '8',
   storageGb: '50',
@@ -106,6 +111,7 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
     try {
       const payload = {
         ...productForm,
+        catalogKey: productForm.catalogKey === '' ? null : productForm.catalogKey,
         sortOrder: Number(productForm.sortOrder) || 0,
         packageId: null,
         price: null,
@@ -156,7 +162,6 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
     try {
       const payload = {
         ...packageForm,
-        tier: 'high' as const,
         cpu: Number(packageForm.cpu),
         ramGb: Number(packageForm.ramGb),
         storageGb: Number(packageForm.storageGb),
@@ -264,6 +269,7 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
                           name: product.name,
                           description: product.description,
                           tier: product.tier,
+                          catalogKey: product.catalogKey ?? '',
                           status: product.status,
                           visibility: product.visibility,
                           sortOrder: String(product.sortOrder),
@@ -320,6 +326,7 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
           <thead>
             <tr className="border-b border-border bg-surface-muted">
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Paket</th>
+              <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Tier</th>
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">CPU / RAM / Storage</th>
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Harga</th>
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Status</th>
@@ -332,6 +339,9 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
                 <td className="px-4 py-3">
                   <p className="font-mono text-xs font-semibold text-text-primary">{pkg.id}</p>
                   {pkg.popular ? <Badge variant="accent">Populer</Badge> : null}
+                </td>
+                <td className="px-4 py-3">
+                  <Badge variant="neutral">{TIER_LABELS[pkg.tier]}</Badge>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">
                   {pkg.cpu} vCore / {pkg.ramGb} GB / {pkg.storageGb} GB
@@ -350,6 +360,7 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
                         setPackageForm({
                           id: pkg.id,
                           label: pkg.label,
+                          tier: pkg.tier === 'medium' ? 'medium' : 'high',
                           cpu: String(pkg.cpu),
                           ramGb: String(pkg.ramGb),
                           storageGb: String(pkg.storageGb),
@@ -381,7 +392,7 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
         </table>
       </div>
       <p className="text-xs text-text-muted">
-        Harga paket High bersifat final. Perubahan harga paket berlaku untuk order baru; order lama tidak berubah.
+        Harga paket Medium & High bersifat final. Perubahan harga berlaku untuk order baru; order lama tidak berubah.
       </p>
     </div>
   );
@@ -393,7 +404,7 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
       <Tabs
         items={[
           { key: 'products', label: `Produk (${products.length})`, content: productTab },
-          { key: 'packages', label: `Paket High (${packages.length})`, content: packageTab },
+          { key: 'packages', label: `Paket Minecraft (${packages.length})`, content: packageTab },
         ]}
       />
 
@@ -427,6 +438,24 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-3">
+            <Field
+              label="Katalog yang Dijual"
+              hint="Menentukan badge ketersediaan dan tautan pemesanan di beranda."
+            >
+              <Select
+                value={productForm.catalogKey}
+                onChange={(e) =>
+                  setProductForm((c) => ({ ...c, catalogKey: e.target.value as CatalogKey | '' }))
+                }
+                options={[
+                  { value: '', label: 'Tidak dijual (informasional)' },
+                  ...(['low', 'medium', 'high', 'vps'] as CatalogKey[]).map((key) => ({
+                    value: key,
+                    label: CATALOG_LABELS[key],
+                  })),
+                ]}
+              />
+            </Field>
             <Field label="Tier">
               <Select
                 value={productForm.tier}
@@ -478,8 +507,8 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
       <Modal
         open={packageModal}
         onClose={() => setPackageModal(false)}
-        title={readOnly ? 'Detail Paket' : editingPackageId ? 'Edit Paket' : 'Tambah Paket High'}
-        description="Paket tetap tier High dengan harga final."
+        title={readOnly ? 'Detail Paket' : editingPackageId ? 'Edit Paket' : 'Tambah Paket'}
+        description="Paket tetap tier Medium atau High dengan harga final."
       >
         <fieldset disabled={readOnly} className="m-0 space-y-4 border-0 p-0">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -495,6 +524,16 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
               <Input
                 value={packageForm.label}
                 onChange={(e) => setPackageForm((c) => ({ ...c, label: e.target.value }))}
+              />
+            </Field>
+            <Field label="Tier" required hint="Tier Low memakai konfigurasi custom, bukan paket tetap.">
+              <Select
+                value={packageForm.tier}
+                onChange={(e) => setPackageForm((c) => ({ ...c, tier: e.target.value as 'medium' | 'high' }))}
+                options={[
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'high', label: 'High' },
+                ]}
               />
             </Field>
             <Field label="CPU (vCore)" required>

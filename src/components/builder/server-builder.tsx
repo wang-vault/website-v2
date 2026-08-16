@@ -31,7 +31,8 @@ import { Checkbox, Field, Input, Textarea } from '@/components/ui/input';
 import { SliderField } from './slider-field';
 import { EstimatePanel } from './estimate-panel';
 import { useToast } from '@/components/ui/toast';
-import type { PackageRecord, Tier } from '@/types';
+import { TIER_STATUS_LABELS } from '@/types';
+import type { CatalogKey, PackageRecord, Tier, TierStatus } from '@/types';
 
 export interface BuilderSession {
   loggedIn: boolean;
@@ -97,12 +98,15 @@ export function ServerBuilder({
   session,
   packages,
   pricing,
+  catalogStatus,
   whatsappNumber,
   turnstileSiteKey,
 }: {
   session: BuilderSession | null;
   packages: PackageRecord[];
   pricing: LowPricingConstants;
+  /** Ketersediaan tier yang berlaku (dikelola admin, diverifikasi ulang server). */
+  catalogStatus: Record<CatalogKey, TierStatus>;
   whatsappNumber: string;
   turnstileSiteKey: string | null;
 }) {
@@ -110,7 +114,11 @@ export function ServerBuilder({
   const { toast } = useToast();
 
   const [step, setStep] = useState<BuilderStep>('configure');
-  const [tier, setTier] = useState<Tier>('low');
+  const orderableTierList = useMemo(
+    () => (['low', 'medium', 'high'] as Tier[]).filter((t) => catalogStatus[t] === 'available'),
+    [catalogStatus],
+  );
+  const [tier, setTier] = useState<Tier>(() => orderableTierList[0] ?? 'low');
   const [cpu, setCpu] = useState(LOW_LIMITS.cpu.min);
   const [ramGb, setRamGb] = useState(LOW_LIMITS.ram.min);
   const [storageGb, setStorageGb] = useState(LOW_LIMITS.storage.min);
@@ -130,6 +138,12 @@ export function ServerBuilder({
   }>({ status: 'idle', message: '', discount: 0 });
   const [savedConfigs, setSavedConfigs] = useState<SavedConfig[]>(readLocalConfigs);
 
+  /** Paket tetap milik tier terpilih (Medium & High memakai mode paket). */
+  const tierPackages = useMemo(
+    () => packages.filter((p) => p.active && p.tier === tier).sort((a, b) => a.sortOrder - b.sortOrder),
+    [packages, tier],
+  );
+  const packageMode = TIER_DEFINITIONS[tier].mode === 'package';
   const activePackage = useMemo(
     () => packages.find((p) => p.id === packageId && p.active) ?? null,
     [packages, packageId],
@@ -139,10 +153,9 @@ export function ServerBuilder({
   const normalized = useMemo(() => normalizeLowConfig({ cpu, ramGb, storageGb }), [cpu, ramGb, storageGb]);
 
   const price = useMemo(() => {
-    if (tier === 'high') return activePackage?.price ?? 0;
-    if (tier === 'medium') return 0;
+    if (packageMode) return activePackage?.price ?? 0;
     return calculateLowPrice(normalized, pricing);
-  }, [tier, activePackage, normalized, pricing]);
+  }, [packageMode, activePackage, normalized, pricing]);
 
   const breakdown = useMemo(() => lowPriceBreakdown(normalized, pricing), [normalized, pricing]);
 
@@ -150,41 +163,47 @@ export function ServerBuilder({
     () =>
       estimatePerformance({
         tier,
-        cpu: tier === 'high' ? activePackage?.cpu ?? 0 : normalized.cpu,
-        ramGb: tier === 'high' ? activePackage?.ramGb ?? 0 : normalized.ramGb,
-        storageGb: tier === 'high' ? activePackage?.storageGb ?? 0 : normalized.storageGb,
+        cpu: packageMode ? activePackage?.cpu ?? 0 : normalized.cpu,
+        ramGb: packageMode ? activePackage?.ramGb ?? 0 : normalized.ramGb,
+        storageGb: packageMode ? activePackage?.storageGb ?? 0 : normalized.storageGb,
       }),
-    [tier, activePackage, normalized],
+    [tier, packageMode, activePackage, normalized],
   );
 
   const effectiveConfig = useMemo(
     () => ({
       tier,
-      packageId: tier === 'high' ? packageId : null,
-      cpu: tier === 'high' ? activePackage?.cpu ?? 0 : normalized.cpu,
-      ramGb: tier === 'high' ? activePackage?.ramGb ?? 0 : normalized.ramGb,
-      storageGb: tier === 'high' ? activePackage?.storageGb ?? 0 : normalized.storageGb,
+      packageId: packageMode ? packageId : null,
+      cpu: packageMode ? activePackage?.cpu ?? 0 : normalized.cpu,
+      ramGb: packageMode ? activePackage?.ramGb ?? 0 : normalized.ramGb,
+      storageGb: packageMode ? activePackage?.storageGb ?? 0 : normalized.storageGb,
     }),
-    [tier, packageId, activePackage, normalized],
+    [tier, packageMode, packageId, activePackage, normalized],
   );
 
-  const tierOngoing = TIER_DEFINITIONS[tier].status === 'ongoing';
+  const tierStatus = catalogStatus[tier];
+  const tierOrderable = tierStatus === 'available';
 
-  const selectTier = useCallback((next: Tier) => {
-    setTier(next);
-    if (next === 'high') {
-      const first = packages.find((p) => p.active);
-      setPackageId(first?.id ?? null);
-    }
-  }, [packages]);
+  const selectTier = useCallback(
+    (next: Tier) => {
+      setTier(next);
+      if (TIER_DEFINITIONS[next].mode === 'package') {
+        const first = packages.find((p) => p.active && p.tier === next);
+        setPackageId(first?.id ?? null);
+      } else {
+        setPackageId(null);
+      }
+    },
+    [packages],
+  );
 
   const resetConfig = useCallback(() => {
     setCpu(LOW_LIMITS.cpu.min);
     setRamGb(LOW_LIMITS.ram.min);
     setStorageGb(LOW_LIMITS.storage.min);
-    setPackageId(packages.find((p) => p.active)?.id ?? null);
+    setPackageId(packages.find((p) => p.active && p.tier === tier)?.id ?? null);
     setCouponState({ status: 'idle', message: '', discount: 0 });
-  }, [packages]);
+  }, [packages, tier]);
 
   const saveConfig = useCallback(async () => {
     const name = `Konfigurasi ${TIER_DEFINITIONS[tier].label} ${effectiveConfig.cpu}C/${effectiveConfig.ramGb}G`;
@@ -325,6 +344,7 @@ export function ServerBuilder({
           serverName: form.serverName.trim(),
           notes: form.notes.trim(),
           couponCode: form.couponCode.trim(),
+          service: 'minecraft',
           tier: effectiveConfig.tier,
           packageId: effectiveConfig.packageId,
           cpu: effectiveConfig.cpu,
@@ -399,7 +419,8 @@ export function ServerBuilder({
     toast,
   ]);
 
-  const configReady = tierOngoing || (tier === 'high' && !activePackage);
+  // Tombol pesan dinonaktifkan bila tier tidak dijual atau paket belum dipilih.
+  const configReady = !tierOrderable || (packageMode && !activePackage);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
@@ -414,6 +435,7 @@ export function ServerBuilder({
                 {(['low', 'medium', 'high'] as Tier[]).map((t) => {
                   const def = TIER_DEFINITIONS[t];
                   const selected = tier === t;
+                  const status = catalogStatus[t];
                   return (
                     <button
                       key={t}
@@ -428,11 +450,11 @@ export function ServerBuilder({
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-semibold text-text-primary">{def.label}</span>
-                        {def.status === 'ongoing' ? (
-                          <Badge variant="warning">Ongoing</Badge>
-                        ) : def.status === 'available' ? (
-                          <Badge variant="success">Tersedia</Badge>
-                        ) : null}
+                        <Badge
+                          variant={status === 'available' ? 'success' : status === 'ongoing' ? 'warning' : 'neutral'}
+                        >
+                          {TIER_STATUS_LABELS[status]}
+                        </Badge>
                       </div>
                       <p className="mt-1 text-xs text-text-muted">{def.cpuName}</p>
                       <p className="mt-2 text-xs leading-relaxed text-text-secondary">
@@ -444,7 +466,7 @@ export function ServerBuilder({
               </div>
             </section>
 
-            {tier === 'low' ? (
+            {tier === 'low' && tierOrderable ? (
               <section aria-labelledby="langkah-low" className="rounded-lg border border-border bg-surface p-5">
                 <h2 id="langkah-low" className="mb-4 text-base font-semibold text-text-primary">
                   Langkah 2 — Atur Konfigurasi
@@ -511,14 +533,21 @@ export function ServerBuilder({
               </section>
             ) : null}
 
-            {tier === 'high' ? (
-              <section aria-labelledby="langkah-high">
-                <h2 id="langkah-high" className="mb-3 text-base font-semibold text-text-primary">
-                  Langkah 2 — Pilih Paket
+            {packageMode && tierOrderable ? (
+              <section aria-labelledby="langkah-paket">
+                <h2 id="langkah-paket" className="mb-3 text-base font-semibold text-text-primary">
+                  Langkah 2 — Pilih Paket {TIER_DEFINITIONS[tier].label}
                 </h2>
+                {tierPackages.length === 0 ? (
+                  <Alert variant="info" title="Belum ada paket pada tier ini">
+                    <p>
+                      Paket tier {TIER_DEFINITIONS[tier].label} belum dipublikasikan. Silakan pilih tier lain
+                      atau hubungi tim WangStore.
+                    </p>
+                  </Alert>
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {packages
-                    .filter((p) => p.active)
+                  {tierPackages
                     .map((pkg) => {
                       const selected = packageId === pkg.id;
                       return (
@@ -568,14 +597,26 @@ export function ServerBuilder({
               </section>
             ) : null}
 
-            {tier === 'medium' ? (
-              <section aria-labelledby="langkah-medium">
-                <Alert variant="warning" title="Ongoing — Paket belum tersedia untuk pemesanan">
-                  <p>Tier Medium sedang dipersiapkan dan belum dapat dipesan.</p>
+            {!tierOrderable ? (
+              <section aria-labelledby="langkah-tidak-tersedia">
+                <Alert
+                  variant="warning"
+                  title={`${TIER_DEFINITIONS[tier].label} — ${TIER_STATUS_LABELS[tierStatus]}`}
+                >
+                  <p>
+                    {tierStatus === 'ongoing'
+                      ? `Tier ${TIER_DEFINITIONS[tier].label} sedang dipersiapkan dan belum dapat dipesan.`
+                      : `Tier ${TIER_DEFINITIONS[tier].label} sedang tidak tersedia untuk dipesan.`}
+                    {orderableTierList.length > 0
+                      ? ` Tier yang dapat dipesan saat ini: ${orderableTierList
+                          .map((t) => TIER_DEFINITIONS[t].label)
+                          .join(', ')}.`
+                      : ''}
+                  </p>
                 </Alert>
                 <div className="mt-4">
                   <Button variant="secondary" disabled>
-                    Paket Belum Tersedia
+                    Belum Tersedia untuk Dipesan
                   </Button>
                 </div>
               </section>
@@ -838,7 +879,7 @@ export function ServerBuilder({
           <div className="mt-4 border-t border-border pt-4">
             <p className="text-xs text-text-muted">Estimasi harga bulanan</p>
             <p className="mt-1 font-mono text-2xl font-bold tracking-tight text-text-primary">
-              {tierOngoing ? '—' : formatRupiah(price)}
+              {tierOrderable ? formatRupiah(price) : '—'}
             </p>
             <p className="text-xs text-text-muted">/bulan</p>
           </div>
@@ -848,19 +889,19 @@ export function ServerBuilder({
             </p>
           ) : null}
         </div>
-        {!tierOngoing && effectiveConfig.cpu > 0 ? <EstimatePanel estimate={estimate} /> : null}
+        {tierOrderable && effectiveConfig.cpu > 0 ? <EstimatePanel estimate={estimate} /> : null}
         <Alert variant="info" title="Estimasi, bukan jaminan">
           <p>
             Angka estimasi dihitung dari model deterministik berdasarkan konfigurasi. Estimasi bukan SLA atau
             jaminan performa.
           </p>
         </Alert>
-        {tierOngoing ? (
+        {!tierOrderable ? (
           <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-4 text-sm text-warning">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <p>
-              Tier {TIER_DEFINITIONS[tier].label} sedang dipersiapkan dan belum dapat dipesan. Pilih tier lain
-              untuk melanjutkan.
+              Tier {TIER_DEFINITIONS[tier].label} {tierStatus === 'ongoing' ? 'sedang dipersiapkan' : 'sedang tidak tersedia'} dan
+              belum dapat dipesan. Pilih tier lain untuk melanjutkan.
             </p>
           </div>
         ) : null}

@@ -8,6 +8,15 @@ export type Role = 'owner' | 'admin' | 'staff' | 'customer';
 
 export type Tier = 'low' | 'medium' | 'high';
 
+/**
+ * Jenis layanan yang dijual. `minecraft` memakai tier Low/Medium/High
+ * (Server Builder), `vps` memakai katalog paket VPS tersendiri.
+ */
+export type ServiceType = 'minecraft' | 'vps';
+
+/** Kunci katalog yang ketersediaannya dapat diatur admin: tier Minecraft + VPS. */
+export type CatalogKey = Tier | 'vps';
+
 export type TierStatus = 'available' | 'ongoing' | 'unavailable';
 
 export type OrderStatus =
@@ -63,6 +72,12 @@ export interface ProductRecord {
   description: string;
   tier: Tier;
   status: 'active' | 'inactive';
+  /**
+   * Kaitan ke katalog yang benar-benar dijual (tier Minecraft atau VPS).
+   * null = entri katalog informasional (layanan yang belum ditawarkan) —
+   * ditampilkan tanpa tombol pemesanan.
+   */
+  catalogKey: CatalogKey | null;
   packageId: string | null;
   price: number | null;
   visibility: 'public' | 'hidden';
@@ -79,6 +94,32 @@ export interface PackageRecord {
   cpu: number;
   ramGb: number;
   storageGb: number;
+  price: number;
+  popular: boolean;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Paket VPS — katalog terpisah dari paket Minecraft karena atribut yang
+ * dijual berbeda (bandwidth, sistem operasi, lokasi, IPv4).
+ * Harga bersifat final; tidak ada formula turunan seperti tier Low.
+ */
+export interface VpsPackageRecord {
+  id: string; // slug, mis. vps-2c4g
+  label: string;
+  description: string;
+  vcpu: number;
+  ramGb: number;
+  storageGb: number;
+  /** Kuota transfer data per bulan (TB). 0 = tidak dibatasi/tidak dicantumkan. */
+  bandwidthTb: number;
+  /** Sistem operasi yang tersedia, mis. Ubuntu 24.04, Debian 12. */
+  operatingSystems: string[];
+  /** Lokasi datacenter yang ditawarkan untuk paket ini. */
+  locations: string[];
   price: number;
   popular: boolean;
   active: boolean;
@@ -134,7 +175,10 @@ export interface OrderRecord {
   customerEmail: string;
   serverName: string;
   notes: string;
-  tier: Tier;
+  /** Layanan yang dipesan. Order lama tanpa nilai dianggap 'minecraft'. */
+  service: ServiceType;
+  /** Tier hanya berlaku untuk layanan Minecraft — null untuk order VPS. */
+  tier: Tier | null;
   packageId: string | null;
   cpu: number;
   ramGb: number;
@@ -358,6 +402,12 @@ export interface SettingsRecord {
   /** status layanan */
   platformStatus: 'operational' | 'degraded' | 'outage' | 'maintenance';
   services: ServiceStatusRecord[];
+  /**
+   * Ketersediaan katalog per tier Minecraft dan VPS.
+   * Menentukan apakah sebuah layanan dapat dipesan — diverifikasi server-side
+   * pada pembuatan order, bukan hanya disembunyikan di UI.
+   */
+  catalogStatus: Record<CatalogKey, TierStatus>;
   /** infrastruktur */
   infrastructureNote: string;
   locations: string[];
@@ -381,14 +431,37 @@ export const TIER_LABELS: Record<Tier, string> = {
 
 export const TIER_DESCRIPTIONS: Record<Tier, string> = {
   low: 'Konfigurasi custom dengan CPU, RAM, dan penyimpanan yang Anda tentukan sendiri.',
-  medium: 'Tier Medium sedang dipersiapkan dan belum dapat dipesan.',
+  medium: 'Paket tetap kelas menengah dengan spesifikasi dan harga final.',
   high: 'Paket tetap dengan spesifikasi dan harga final yang sudah ditentukan.',
 };
 
-export const TIER_STATUS: Record<Tier, TierStatus> = {
+/**
+ * Ketersediaan bawaan bila belum pernah diatur admin.
+ * Nilai runtime yang berlaku selalu berasal dari settings.catalogStatus.
+ */
+export const DEFAULT_CATALOG_STATUS: Record<CatalogKey, TierStatus> = {
   low: 'available',
-  medium: 'ongoing',
+  medium: 'available',
   high: 'available',
+  vps: 'available',
+};
+
+export const CATALOG_LABELS: Record<CatalogKey, string> = {
+  low: 'Minecraft — Low',
+  medium: 'Minecraft — Medium',
+  high: 'Minecraft — High',
+  vps: 'VPS',
+};
+
+export const TIER_STATUS_LABELS: Record<TierStatus, string> = {
+  available: 'Tersedia',
+  ongoing: 'Sedang Disiapkan',
+  unavailable: 'Tidak Tersedia',
+};
+
+export const SERVICE_LABELS: Record<ServiceType, string> = {
+  minecraft: 'Minecraft Hosting',
+  vps: 'VPS',
 };
 
 export const ROLE_LABELS: Record<Role, string> = {

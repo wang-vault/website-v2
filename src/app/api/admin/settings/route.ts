@@ -12,6 +12,14 @@ const settingsSchema = z.object({
   discordInviteUrl: z.string().trim().max(300).optional(),
   contactEmail: z.string().trim().email('Format email tidak valid.').or(z.literal('')).optional(),
   platformStatus: z.enum(['operational', 'degraded', 'outage', 'maintenance']).optional(),
+  catalogStatus: z
+    .object({
+      low: z.enum(['available', 'ongoing', 'unavailable']),
+      medium: z.enum(['available', 'ongoing', 'unavailable']),
+      high: z.enum(['available', 'ongoing', 'unavailable']),
+      vps: z.enum(['available', 'ongoing', 'unavailable']),
+    })
+    .optional(),
   services: z
     .array(
       z.object({
@@ -37,8 +45,9 @@ const settingsSchema = z.object({
 /**
  * Pengaturan disimpan dalam satu baris, tetapi WEWENANGNYA berbeda per grup
  * field. Karena itu izin diperiksa per grup, bukan sekali untuk seluruh route:
- * - status layanan  → status.manage      (Staff — bagian dari tugas operasional)
- * - mode maintenance → maintenance.manage (Owner)
+ * - status layanan     → status.manage      (Staff — bagian dari tugas operasional)
+ * - ketersediaan katalog → products.manage   (Admin — keputusan komersial)
+ * - mode maintenance   → maintenance.manage (Owner)
  * - sisanya (branding, kontak, infrastruktur, pembayaran) → settings.manage (Admin)
  */
 const MAINTENANCE_FIELDS = [
@@ -50,6 +59,9 @@ const MAINTENANCE_FIELDS = [
 ] as const;
 
 const STATUS_FIELDS = ['platformStatus', 'services'] as const;
+
+/** Ketersediaan katalog (tier Minecraft & VPS) — keputusan komersial. */
+const CATALOG_FIELDS = ['catalogStatus'] as const;
 
 /** GET /api/admin/settings — seluruh pengguna panel (Staff+) boleh membaca. */
 export async function GET(): Promise<Response> {
@@ -82,14 +94,17 @@ export async function PUT(request: Request): Promise<Response> {
     const fields = Object.keys(parsed.data);
     const touchesMaintenance = MAINTENANCE_FIELDS.some((field) => field in parsed.data);
     const touchesStatus = STATUS_FIELDS.some((field) => field in parsed.data);
+    const touchesCatalog = CATALOG_FIELDS.some((field) => field in parsed.data);
     const touchesGeneral = fields.some(
       (field) =>
         !MAINTENANCE_FIELDS.includes(field as (typeof MAINTENANCE_FIELDS)[number]) &&
-        !STATUS_FIELDS.includes(field as (typeof STATUS_FIELDS)[number]),
+        !STATUS_FIELDS.includes(field as (typeof STATUS_FIELDS)[number]) &&
+        !CATALOG_FIELDS.includes(field as (typeof CATALOG_FIELDS)[number]),
     );
 
     if (touchesMaintenance) assertPermission(session.role, 'maintenance.manage');
     if (touchesStatus) assertPermission(session.role, 'status.manage');
+    if (touchesCatalog) assertPermission(session.role, 'products.manage');
     if (touchesGeneral) assertPermission(session.role, 'settings.manage');
 
     const updated = await db.settings.update(parsed.data);

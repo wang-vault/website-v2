@@ -14,6 +14,7 @@ import type {
   OrderRecord,
   OrderStatus,
   PackageRecord,
+  VpsPackageRecord,
   CmsPageRecord,
   PricingRulesRecord,
   ProductRecord,
@@ -84,6 +85,13 @@ export interface PackageRepository {
   remove(id: string): Promise<void>;
 }
 
+export interface VpsPackageRepository {
+  list(): Promise<VpsPackageRecord[]>;
+  get(id: string): Promise<VpsPackageRecord | null>;
+  upsert(pkg: VpsPackageRecord): Promise<void>;
+  remove(id: string): Promise<void>;
+}
+
 export interface PricingRepository {
   get(): Promise<PricingRulesRecord>;
   update(rules: PricingRulesRecord): Promise<void>;
@@ -109,7 +117,8 @@ export interface CouponRepository {
    */
   validate(input: {
     code: string;
-    tier: Tier;
+    /** null untuk layanan non-tier (VPS) — kupon bertarget tier tidak berlaku. */
+    tier: Tier | null;
     packageId: string | null;
     subtotal: number;
     customerKey: string;
@@ -266,6 +275,7 @@ export interface DataStore {
   profiles: ProfileRepository;
   products: ProductRepository;
   packages: PackageRepository;
+  vpsPackages: VpsPackageRepository;
   pricing: PricingRepository;
   coupons: CouponRepository;
   orders: OrderRepository;

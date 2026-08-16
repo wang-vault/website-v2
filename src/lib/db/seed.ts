@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { DEFAULT_LOW_PRICING, HIGH_PACKAGES } from '@/lib/pricing';
 import { generateId, toIso } from '@/lib/utils';
+import { DEFAULT_CATALOG_STATUS } from '@/types';
 import type {
   AnnouncementRecord,
   BlogCategoryRecord,
@@ -14,6 +15,7 @@ import type {
   PricingRulesRecord,
   ProductRecord,
   ProfileRecord,
+  VpsPackageRecord,
   Role,
   SettingsRecord,
   UserRecord,
@@ -59,11 +61,29 @@ const PRODUCTS: ProductRecord[] = [
       'Server Minecraft dengan konfigurasi custom — tentukan CPU, RAM, dan penyimpanan sesuai kebutuhan Anda melalui Server Builder.',
     tier: 'low',
     status: 'active',
+    catalogKey: 'low',
     packageId: null,
     price: null,
     visibility: 'public',
     metadata: {},
     sortOrder: 1,
+    createdAt: toIso(),
+    updatedAt: toIso(),
+  },
+  {
+    id: generateId('pr'),
+    slug: 'minecraft-hosting-medium',
+    name: 'Minecraft Hosting Medium',
+    description:
+      'Server Minecraft kelas menengah dengan paket tetap dan harga final. Cocok untuk komunitas yang mulai bertumbuh.',
+    tier: 'medium',
+    status: 'active',
+    catalogKey: 'medium',
+    packageId: null,
+    price: null,
+    visibility: 'public',
+    metadata: {},
+    sortOrder: 2,
     createdAt: toIso(),
     updatedAt: toIso(),
   },
@@ -75,11 +95,12 @@ const PRODUCTS: ProductRecord[] = [
       'Server Minecraft performa tinggi dengan paket tetap dan harga final. Cocok untuk komunitas dengan banyak pemain konkuren.',
     tier: 'high',
     status: 'active',
+    catalogKey: 'high',
     packageId: null,
     price: null,
     visibility: 'public',
     metadata: {},
-    sortOrder: 2,
+    sortOrder: 3,
     createdAt: toIso(),
     updatedAt: toIso(),
   },
@@ -88,14 +109,15 @@ const PRODUCTS: ProductRecord[] = [
     slug: 'vps',
     name: 'VPS',
     description:
-      'Virtual Private Server untuk kebutuhan developer dan aplikasi. Layanan ini sedang dipersiapkan dan belum dapat dipesan.',
+      'Virtual Private Server untuk aplikasi web, bot, database, dan panel. Paket tetap dengan vCPU, RAM, penyimpanan NVMe, dan kuota transfer.',
     tier: 'medium',
     status: 'active',
+    catalogKey: 'vps',
     packageId: null,
     price: null,
     visibility: 'public',
     metadata: {},
-    sortOrder: 3,
+    sortOrder: 4,
     createdAt: toIso(),
     updatedAt: toIso(),
   },
@@ -107,11 +129,12 @@ const PRODUCTS: ProductRecord[] = [
       'Server fisik khusus untuk beban kerja besar. Layanan ini sedang dipersiapkan dan belum dapat dipesan.',
     tier: 'medium',
     status: 'active',
+    catalogKey: null,
     packageId: null,
     price: null,
     visibility: 'public',
     metadata: {},
-    sortOrder: 4,
+    sortOrder: 5,
     createdAt: toIso(),
     updatedAt: toIso(),
   },
@@ -123,18 +146,24 @@ const PRODUCTS: ProductRecord[] = [
       'Hosting panel untuk pengelolaan server game. Layanan ini sedang dipersiapkan dan belum dapat dipesan.',
     tier: 'medium',
     status: 'active',
+    catalogKey: null,
     packageId: null,
     price: null,
     visibility: 'public',
     metadata: {},
-    sortOrder: 5,
+    sortOrder: 6,
     createdAt: toIso(),
     updatedAt: toIso(),
   },
 ];
 
 function packages(): PackageRecord[] {
-  return HIGH_PACKAGES.map((pkg) => ({
+  const medium: PackageRecord[] = MEDIUM_PACKAGES.map((pkg) => ({
+    ...pkg,
+    createdAt: toIso(),
+    updatedAt: toIso(),
+  }));
+  const high: PackageRecord[] = HIGH_PACKAGES.map((pkg) => ({
     id: pkg.id,
     label: pkg.label,
     tier: pkg.tier,
@@ -148,6 +177,90 @@ function packages(): PackageRecord[] {
     createdAt: toIso(),
     updatedAt: toIso(),
   }));
+  return [...medium, ...high];
+}
+
+/**
+ * Paket tetap tier Medium — spesifikasi & harga awal yang dapat diubah admin
+ * di Panel Admin → Produk & Paket. Ditempatkan di antara Low (custom) dan High.
+ */
+const MEDIUM_PACKAGES: Array<Omit<PackageRecord, 'createdAt' | 'updatedAt'>> = [
+  { id: 'medium-2c4g', label: 'Medium 2C/4G', tier: 'medium', cpu: 2, ramGb: 4, storageGb: 30, price: 150_000, popular: false, active: true, sortOrder: 1 },
+  { id: 'medium-4c8g', label: 'Medium 4C/8G', tier: 'medium', cpu: 4, ramGb: 8, storageGb: 50, price: 285_000, popular: true, active: true, sortOrder: 2 },
+  { id: 'medium-6c12g', label: 'Medium 6C/12G', tier: 'medium', cpu: 6, ramGb: 12, storageGb: 70, price: 415_000, popular: false, active: true, sortOrder: 3 },
+  { id: 'medium-8c16g', label: 'Medium 8C/16G', tier: 'medium', cpu: 8, ramGb: 16, storageGb: 90, price: 540_000, popular: false, active: true, sortOrder: 4 },
+];
+
+/**
+ * Katalog paket VPS awal. Spesifikasi, harga, OS, dan lokasi WAJIB disesuaikan
+ * admin dengan kapasitas yang benar-benar dimiliki sebelum dijual —
+ * WangStore tidak mengiklankan sumber daya yang tidak tersedia.
+ */
+const VPS_PACKAGES: Array<Omit<VpsPackageRecord, 'createdAt' | 'updatedAt'>> = [
+  {
+    id: 'vps-starter-1c2g',
+    label: 'VPS Starter',
+    description: 'Untuk bot, panel kecil, dan aplikasi ringan.',
+    vcpu: 1,
+    ramGb: 2,
+    storageGb: 40,
+    bandwidthTb: 2,
+    operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12'],
+    locations: [],
+    price: 95_000,
+    popular: false,
+    active: true,
+    sortOrder: 1,
+  },
+  {
+    id: 'vps-standard-2c4g',
+    label: 'VPS Standard',
+    description: 'Untuk web app, database kecil, dan CI runner.',
+    vcpu: 2,
+    ramGb: 4,
+    storageGb: 80,
+    bandwidthTb: 4,
+    operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12', 'AlmaLinux 9'],
+    locations: [],
+    price: 175_000,
+    popular: true,
+    active: true,
+    sortOrder: 2,
+  },
+  {
+    id: 'vps-pro-4c8g',
+    label: 'VPS Pro',
+    description: 'Untuk beberapa layanan sekaligus atau panel hosting.',
+    vcpu: 4,
+    ramGb: 8,
+    storageGb: 160,
+    bandwidthTb: 8,
+    operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12', 'AlmaLinux 9'],
+    locations: [],
+    price: 320_000,
+    popular: false,
+    active: true,
+    sortOrder: 3,
+  },
+  {
+    id: 'vps-power-8c16g',
+    label: 'VPS Power',
+    description: 'Untuk beban kerja berat dan kebutuhan produksi.',
+    vcpu: 8,
+    ramGb: 16,
+    storageGb: 320,
+    bandwidthTb: 16,
+    operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12', 'AlmaLinux 9'],
+    locations: [],
+    price: 620_000,
+    popular: false,
+    active: true,
+    sortOrder: 4,
+  },
+];
+
+function vpsPackages(): VpsPackageRecord[] {
+  return VPS_PACKAGES.map((pkg) => ({ ...pkg, createdAt: toIso(), updatedAt: toIso() }));
 }
 
 function pricingRules(): PricingRulesRecord[] {
@@ -205,6 +318,7 @@ function settings(): SettingsRecord[] {
         'WangStore sedang dalam pemeliharaan terjadwal. Kami akan segera kembali. Terima kasih atas kesabaran Anda.',
       maintenanceEstimatedRestoration: '',
       maintenanceAllowedPaths: ['/status'],
+      catalogStatus: { ...DEFAULT_CATALOG_STATUS },
       platformStatus: 'operational',
       services: [
         { name: 'Website & API', status: 'operational', description: 'Halaman web, Server Builder, dan API pemesanan.' },
@@ -1285,6 +1399,7 @@ export async function buildSeedData(): Promise<JsonCollections> {
     profiles: [profile, ...panelProfiles],
     products: PRODUCTS,
     packages: packages(),
+    vpsPackages: vpsPackages(),
     pricing: pricingRules(),
     coupons: coupons(),
     couponUsages: [],

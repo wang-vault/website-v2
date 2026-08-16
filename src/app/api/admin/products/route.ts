@@ -10,6 +10,8 @@ const productSchema = z.object({
   description: z.string().trim().min(5).max(2000),
   tier: z.enum(['low', 'medium', 'high']),
   status: z.enum(['active', 'inactive']),
+  /** Katalog yang dijual: tier Minecraft atau VPS. null = informasional. */
+  catalogKey: z.enum(['low', 'medium', 'high', 'vps']).nullable().optional().default(null),
   packageId: z.string().max(80).nullable(),
   price: z.number().int().min(0).max(1_000_000_000).nullable(),
   visibility: z.enum(['public', 'hidden']),
@@ -19,7 +21,7 @@ const productSchema = z.object({
 
 export async function GET(): Promise<Response> {
   try {
-    const { db } = await requireAdmin('products.manage');
+    const { db } = await requireAdmin('products.read');
     const products = await db.products.list({ publicOnly: false });
     return apiOk(products);
   } catch (error) {

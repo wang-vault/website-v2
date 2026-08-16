@@ -75,6 +75,16 @@ Artikel terbit. `GET /api/knowledge-base` / `[slug]` untuk knowledge base.
 | `POST /tickets/[id]/messages` | `message`; tiket tertutup → 409 |
 | `PATCH /tickets/[id]` | `status` (pelanggan: hanya open/closed) |
 
+## Katalog VPS
+
+| Endpoint | Keterangan |
+| --- | --- |
+| `GET /vps-packages` | Katalog VPS aktif + status ketersediaan (`available` / `ongoing` / `unavailable`). |
+
+`POST /orders` menerima `service: 'minecraft' | 'vps'` (default `minecraft`). Untuk `vps`, `packageId` wajib dan
+`tier` diabaikan; harga selalu diambil dari katalog di server. Layanan yang tidak berstatus *Tersedia* ditolak
+dengan `409 TIER_ONGOING` / `409 TIER_UNAVAILABLE`.
+
 ## Admin (`/api/admin/*`, RBAC per route)
 
 | Endpoint | Minimum role |
@@ -88,12 +98,13 @@ Artikel terbit. `GET /api/knowledge-base` / `[slug]` untuk knowledge base.
 | `PUT /pricing` | Admin (`pricing.manage`) |
 | `GET /coupons` | Staff (`coupons.read`) |
 | `POST /coupons`, `PATCH/DELETE /coupons/[id]` | Admin (`coupons.manage`) |
-| `GET /products`, `GET /packages` | Staff (`products.read`) |
+| `GET /products`, `GET /packages`, `GET /vps-packages` | Staff (`products.read`) |
 | `POST /products`, `PATCH/DELETE /products/[id]` | Admin (`products.manage`) |
-| `POST /packages`, `PATCH/DELETE /packages/[id]` | Admin (`packages.manage`) |
+| `POST /packages`, `PATCH/DELETE /packages/[id]` | Admin (`packages.manage`); tier `medium` atau `high` |
+| `POST /vps-packages`, `PATCH/DELETE /vps-packages/[id]` | Admin (`packages.manage`) |
 | `GET /analytics` | Admin (`analytics.read`) |
 | `GET /settings` | Staff (`settings.read`) |
-| `PUT /settings` | Per grup field: status layanan → Staff (`status.manage`), maintenance → Owner (`maintenance.manage`), sisanya → Admin (`settings.manage`) |
+| `PUT /settings` | Per grup field: status layanan → Staff (`status.manage`), ketersediaan katalog (`catalogStatus`) → Admin (`products.manage`), maintenance → Owner (`maintenance.manage`), sisanya → Admin (`settings.manage`) |
 | `GET /audit-logs` (filter `resource`, `q`) | Admin (`audit.read`) |
 | `GET /cms/[resource]`, `GET /cms/[resource]/[id]` | Staff (`readPermission` resource: `content.read` / `status.read`) |
 | `POST/PATCH/DELETE /cms/[resource]` | `writePermission` resource: `content.manage` (Admin), `legal.manage` (Admin), `status.manage` (Staff untuk incidents/maintenanceWindows) |

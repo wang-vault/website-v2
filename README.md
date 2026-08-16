@@ -20,6 +20,7 @@ WangStore **bukan** infrastructure hosting dan **bukan** Minecraft control panel
 - [Autentikasi](#autentikasi)
 - [API](#api)
 - [Keamanan](#keamanan)
+- [Katalog & Ketersediaan Layanan](#katalog--ketersediaan-layanan)
 - [Pricing & Server Builder](#pricing--server-builder)
 - [Alur Order](#alur-order)
 - [CMS](#cms)
@@ -229,14 +230,40 @@ Cara kerjanya:
   merender formulir dalam mode nonaktif.
 - Setiap API route tetap memverifikasi izin sendiri — UI hanya kenyamanan, bukan pengaman.
 
+## Katalog & Ketersediaan Layanan
+
+Katalog yang dijual terdiri dari tiga tier Minecraft (Low/Medium/High) dan VPS. **Ketersediaan setiap layanan
+diatur dari Panel Admin → Produk, Paket & VPS → Ketersediaan Layanan** (izin `products.manage`), bukan konstanta
+di kode:
+
+| Status | Arti |
+| --- | --- |
+| **Tersedia** | Dijual dan dapat dipesan. |
+| **Sedang Disiapkan** | Tetap ditampilkan dengan keterangan jujur, order ditolak `409 TIER_ONGOING`. |
+| **Tidak Tersedia** | Tidak ditawarkan, order ditolak `409 TIER_UNAVAILABLE`. |
+
+Status disimpan di `settings.catalogStatus` dan **diverifikasi ulang server-side** pada setiap pembuatan order
+serta estimasi harga — menyembunyikan tombol di UI bukan mekanisme pengaman.
+
+Katalog paket:
+
+- **Paket Minecraft (Medium & High)** — tabel `packages`, dikelola di tab *Produk & Paket Minecraft*.
+- **Paket VPS** — tabel `vps_packages` (vCPU, RAM, penyimpanan, transfer, OS, lokasi), dikelola di tab *Paket VPS*
+  dan tampil di halaman publik `/vps`.
+- Order menyimpan kolom `service` (`minecraft` | `vps`); order VPS tidak memakai tier.
+
+Paket bawaan hasil seed adalah **titik awal** — sesuaikan spesifikasi, lokasi, dan harga dengan kapasitas yang
+benar-benar dimiliki sebelum dijual.
+
 ## Pricing & Server Builder
 
 - **Satu shared module** `src/lib/pricing/` — UI dan API mengimpor modul yang sama. Tidak ada duplikasi formula.
-- Tier: **Low** (custom: CPU 2–16, RAM 4–32 GB, Penyimpanan 20–160 GB; 160 GB batas absolut), **Medium** (Ongoing — ditolak dengan HTTP 409), **High** (paket tetap, harga final, `high-4c8g` = Populer).
+- Tier Minecraft: **Low** (custom: CPU 2–16, RAM 4–32 GB, Penyimpanan 20–160 GB; 160 GB batas absolut), **Medium** dan **High** (paket tetap dengan harga final, dikelola admin di Panel Admin → Produk, Paket & VPS).
+- **VPS** dijual sebagai katalog paket tetap tersendiri (vCPU, RAM, penyimpanan, kuota transfer, OS, lokasi) di halaman **`/vps`**, dengan alur order yang sama.
 - Formula Low: `5.000 + CPU×7.000 + RAM×4.500 + Storage×300`, dibulatkan ke Rp500, minimum **Rp45.000/bulan** (2C/4G/20G = tepat Rp45.000).
 - Estimasi performa (TPS, pemain, CPU/RAM, plugin, grade) deterministik & shared — diberi label **Estimasi**, bukan SLA.
 - Nilai di luar batas **dipangkas** (clamp), tidak ditolak: 20/64/900 → 16/32/160.
-- Medium dan paket palsu ditolak; tidak pernah menghasilkan Rp0.
+- Paket palsu dan paket lintas-tier ditolak (422); layanan yang tidak berstatus *Tersedia* ditolak (409); tidak pernah menghasilkan Rp0.
 
 ## Alur Order
 
@@ -263,7 +290,7 @@ npm run typecheck   # 0 error TypeScript
 npm run lint        # 0 error, 0 warning
 npm run test        # unit test pricing engine + matriks RBAC (Vitest)
 npm run build       # production build
-npm run smoke       # HTTP smoke test (78 acceptance check)
+npm run smoke       # HTTP smoke test (93 acceptance check)
 ```
 
 `npm run ci` menjalankan semuanya. Smoke test mencakup: harga paket High tepat, minimum Low 45.000, normalisasi 20/64/900 → 16/32/160, Medium → 409, paket palsu → 422, halaman publik → 200, `/dashboard` → `/login`, admin salah/benar + RBAC, pemisahan wewenang Staff vs Admin vs Owner (staff dapat operasional & baca-saja, ditolak untuk harga/CMS/branding/audit/analitik; admin ditolak untuk mode maintenance), CSRF lintas origin ditolak, kupon valid/kedaluwarsa/limit/diskon client diabaikan.

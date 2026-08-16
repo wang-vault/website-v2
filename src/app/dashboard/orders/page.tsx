@@ -5,7 +5,8 @@ import { Table, type Column } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/state';
 import { formatDate, formatRupiah } from '@/lib/utils';
-import { ORDER_STATUS_LABELS, TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
+import { ORDER_STATUS_LABELS } from '@/types';
 import type { OrderRecord } from '@/types';
 
 const STATUS_VARIANT: Record<string, 'neutral' | 'success' | 'warning' | 'error' | 'info'> = {
@@ -45,7 +46,7 @@ export default async function DashboardOrdersPage() {
       header: 'Layanan',
       render: (order) => (
         <span className="text-xs">
-          {TIER_LABELS[order.tier]}
+          {orderCatalogLabel(order)}
           {order.packageId ? ` · ${order.packageId}` : ` · ${order.cpu}C/${order.ramGb}G/${order.storageGb}G`}
         </span>
       ),

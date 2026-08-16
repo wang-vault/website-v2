@@ -11,7 +11,8 @@ import { formatDate, formatDateTime, formatRupiah } from '@/lib/utils';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { ButtonLink } from '@/components/ui/button-link';
-import { ORDER_STATUS_LABELS, TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
+import { ORDER_STATUS_LABELS } from '@/types';
 
 export const metadata: Metadata = {
   title: 'Konfirmasi Order',
@@ -103,9 +104,9 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pa
               <dd className="text-right font-mono text-text-primary">{order.serverName}</dd>
             </div>
             <div className="flex justify-between gap-4 border-t border-border pt-3">
-              <dt className="text-text-secondary">Tier</dt>
+              <dt className="text-text-secondary">Layanan</dt>
               <dd className="text-right font-medium text-text-primary">
-                {TIER_LABELS[order.tier]}
+                {orderCatalogLabel(order)}
                 {order.packageId ? ` — ${order.packageId}` : ''}
               </dd>
             </div>

@@ -58,7 +58,8 @@ payload limit → rate limit → maintenance → origin/CSRF → Turnstile
 → audit → notifikasi → WhatsApp URL
 ```
 
-- Medium selalu ditolak (409); paket palsu ditolak (422); total tidak pernah Rp0.
+- Ketersediaan layanan (tier Minecraft & VPS) dibaca dari `settings.catalogStatus` dan diverifikasi server-side: status `ongoing` / `unavailable` ditolak (409). Paket palsu, paket nonaktif, dan paket milik tier lain ditolak (422); total tidak pernah Rp0.
+- Order VPS memakai harga dari tabel `vps_packages` — nilai harga dari klien tidak pernah dipakai.
 - Halaman konfirmasi order: hanya pemilik (login), staff, atau pemegang token akses (hash SHA-256 disimpan; token tidak disimpan).
 - Perubahan status order oleh staff diaudit; harga order **tidak dapat diubah**.
 

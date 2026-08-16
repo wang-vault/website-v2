@@ -4,7 +4,8 @@ import { getDb } from '@/lib/db';
 import { StatCard } from '@/components/ui/misc';
 import { formatDate, formatRupiah } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { ORDER_STATUS_LABELS, ROLE_LABELS, TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
+import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@/types';
 import { EmptyState } from '@/components/ui/state';
 import { requireAdminPage } from '@/lib/auth/page-guards';
 import { ROLE_DEFINITIONS, type Permission } from '@/lib/auth/rbac';
@@ -93,7 +94,7 @@ export default async function AdminOverviewPage() {
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-medium text-text-primary">{order.id}</p>
                     <p className="mt-0.5 truncate text-xs text-text-muted">
-                      {order.customerName} · {TIER_LABELS[order.tier]}{' '}
+                      {order.customerName} · {orderCatalogLabel(order)}{' '}
                       {order.packageId ? `· ${order.packageId}` : `· ${order.cpu}C/${order.ramGb}G`} ·{' '}
                       {formatDate(order.createdAt)}
                     </p>

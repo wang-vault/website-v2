@@ -22,6 +22,7 @@ export interface NavAnnouncement {
 
 const NAV_LINKS: { href: string; label: string; match: string }[] = [
   { href: '/server-builder', label: 'Server Builder', match: '/server-builder' },
+  { href: '/vps', label: 'VPS', match: '/vps' },
   { href: '/features', label: 'Fitur', match: '/features' },
   { href: '/blog', label: 'Blog', match: '/blog' },
   { href: '/knowledge-base', label: 'Knowledge Base', match: '/knowledge-base' },

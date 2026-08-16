@@ -10,7 +10,8 @@ import { Pagination } from '@/components/ui/table';
 import { EmptyState, LoadingState } from '@/components/ui/state';
 import { useToast } from '@/components/ui/toast';
 import { formatDate, formatDateTime, formatRupiah } from '@/lib/utils';
-import { ORDER_STATUS_LABELS, TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
+import { ORDER_STATUS_LABELS } from '@/types';
 import type { OrderRecord, OrderStatus } from '@/types';
 
 const ALL_STATUSES: OrderStatus[] = [
@@ -193,7 +194,7 @@ export function OrdersManager() {
                       <p className="font-mono text-xs text-text-muted">{order.customerWhatsapp}</p>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-text-primary">
-                      {TIER_LABELS[order.tier]}{' '}
+                      {orderCatalogLabel(order)}{' '}
                       {order.packageId ?? `${order.cpu}C/${order.ramGb}G/${order.storageGb}G`}
                     </td>
                     <td className="px-4 py-3">

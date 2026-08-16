@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateId } from '@/lib/utils';
+import { orderCatalogKey } from '@/lib/catalog';
 import type {
   AnnouncementRecord,
   AuditLogRecord,
@@ -14,6 +15,7 @@ import type {
   NotificationRecord,
   OrderRecord,
   PackageRecord,
+  VpsPackageRecord,
   CmsPageRecord,
   PricingRulesRecord,
   ProductRecord,
@@ -40,6 +42,7 @@ import type {
   NotificationRepository,
   OrderRepository,
   PackageRepository,
+  VpsPackageRepository,
   Paginated,
   PricingRepository,
   ProductRepository,
@@ -230,6 +233,28 @@ export class SupabaseDataStore implements DataStore {
     },
   };
 
+  // ───────────────────────────────────────────── paket VPS
+  readonly vpsPackages: VpsPackageRepository = {
+    list: async () => {
+      const { data, error } = await this.client.from('vps_packages').select('*').order('sortOrder', { ascending: true });
+      if (error) throw new Error(`Supabase vpsPackages.list: ${error.message}`);
+      return (data ?? []) as VpsPackageRecord[];
+    },
+    get: async (id: string) => {
+      const { data, error } = await this.client.from('vps_packages').select('*').eq('id', id).maybeSingle();
+      if (error) throw new Error(`Supabase vpsPackages.get: ${error.message}`);
+      return (data as VpsPackageRecord | null) ?? null;
+    },
+    upsert: async (pkg: VpsPackageRecord) => {
+      const { error } = await this.client.from('vps_packages').upsert(pkg, { onConflict: 'id' });
+      if (error) throw new Error(`Supabase vpsPackages.upsert: ${error.message}`);
+    },
+    remove: async (id: string) => {
+      const { error } = await this.client.from('vps_packages').delete().eq('id', id);
+      if (error) throw new Error(`Supabase vpsPackages.remove: ${error.message}`);
+    },
+  };
+
   // ───────────────────────────────────────────── pricing
   readonly pricing: PricingRepository = {
     get: async () => {
@@ -305,8 +330,8 @@ export class SupabaseDataStore implements DataStore {
       if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
         return { ok: false, code: 'LIMIT_REACHED', reason: 'Batas penggunaan kupon sudah tercapai.' };
       }
-      if (coupon.applicableTiers.length > 0 && !coupon.applicableTiers.includes(input.tier)) {
-        return { ok: false, code: 'TIER_MISMATCH', reason: 'Kupon tidak berlaku untuk tier ini.' };
+      if (coupon.applicableTiers.length > 0 && (input.tier === null || !coupon.applicableTiers.includes(input.tier))) {
+        return { ok: false, code: 'TIER_MISMATCH', reason: 'Kupon tidak berlaku untuk layanan ini.' };
       }
       if (
         coupon.applicablePackages.length > 0 &&
@@ -408,7 +433,7 @@ export class SupabaseDataStore implements DataStore {
       const customerEmails = new Set(orders.map((o) => o.customerEmail.toLowerCase()));
       const packageCounts = new Map<string, { label: string; count: number }>();
       for (const order of orders) {
-        const key = order.packageId ?? order.tier;
+        const key = order.packageId ?? orderCatalogKey(order);
         const entry = packageCounts.get(key) ?? { label: key, count: 0 };
         entry.count += 1;
         packageCounts.set(key, entry);

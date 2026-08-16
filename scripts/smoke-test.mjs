@@ -119,6 +119,8 @@ async function main() {
       // Harness melakukan login untuk banyak peran (customer, owner, admin, staff);
       // batas login default 5/IP akan menghalangi test — bukan properti yang diuji di sini.
       RATE_LIMIT_LOGIN_MAX: process.env.RATE_LIMIT_LOGIN_MAX || '50',
+      // Harness membuat banyak order (Low, Medium, High, VPS, kupon) dari satu IP.
+      RATE_LIMIT_ORDER_MAX: process.env.RATE_LIMIT_ORDER_MAX || '100',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true, // grup proses sendiri agar child next-server ikut dimatikan
@@ -210,10 +212,11 @@ async function main() {
       JSON.stringify(overflowData),
     );
 
-    // ── Test 4: Medium → 409, tidak pernah Rp0
-    console.log('Test 4 — Tier Medium ditolak (409)');
+    // ── Test 4: Medium adalah tier paket tetap — paket wajib valid, tidak pernah Rp0.
+    // (Penolakan tier berstatus ongoing/unavailable diuji pada Test 9b.)
+    console.log('Test 4 — Tier Medium memerlukan paket yang valid');
     const medium = await request('/api/orders', { method: 'POST', body: orderPayload({ tier: 'medium' }) });
-    assert(medium.status === 409, `POST medium → ${medium.status}`);
+    assert(medium.status === 422, `POST medium tanpa paket → ${medium.status}`);
     assert(medium.json?.data?.total !== 0, 'tidak pernah Rp0');
 
     // ── Test 5: fake package → 422
@@ -409,6 +412,141 @@ async function main() {
     } else {
       console.log('  … akun contoh staff tidak tersedia (bukan mode JSON dev) — dilewati');
     }
+
+    // ── Test 9b: katalog VPS & tier Medium (paket tetap) + kontrol ketersediaan
+    console.log('Test 9b — Katalog VPS, tier Medium & ketersediaan');
+    const vpsCatalog = await request('/api/vps-packages');
+    const vpsList = vpsCatalog.json?.data?.packages ?? [];
+    assert(vpsCatalog.status === 200 && Array.isArray(vpsList), '/api/vps-packages → 200');
+
+    const pricingCatalog = await request('/api/pricing');
+    const mediumPackages = pricingCatalog.json?.data?.medium?.packages ?? [];
+    assert(mediumPackages.length > 0, 'katalog paket Medium tersedia di /api/pricing');
+    assert(Boolean(pricingCatalog.json?.data?.catalogStatus), '/api/pricing menyertakan catalogStatus');
+
+    const firstVps = vpsList[0];
+    if (firstVps) {
+      const vpsOrder = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli VPS',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'vps@example.com',
+          serverName: 'app-produksi',
+          notes: '',
+          couponCode: '',
+          service: 'vps',
+          packageId: firstVps.id,
+          agreeTerms: true,
+        },
+      });
+      assert(vpsOrder.status === 201, 'order VPS → 201');
+      assert(vpsOrder.json?.data?.order?.service === 'vps', 'order tercatat sebagai layanan VPS');
+      assert(vpsOrder.json?.data?.order?.tier === null, 'order VPS tidak memakai tier');
+      assert(
+        vpsOrder.json?.data?.order?.total === firstVps.price,
+        'harga VPS dihitung server dari katalog',
+        String(vpsOrder.json?.data?.order?.total),
+      );
+
+      const fakeVps = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli VPS',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'vps@example.com',
+          serverName: 'app-produksi',
+          notes: '',
+          couponCode: '',
+          service: 'vps',
+          packageId: 'paket-hantu',
+          agreeTerms: true,
+        },
+      });
+      assert(fakeVps.status === 422, 'paket VPS palsu → 422');
+    }
+
+    const firstMedium = mediumPackages[0];
+    if (firstMedium) {
+      const mediumOrder = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli Medium',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'medium@example.com',
+          serverName: 'server-medium',
+          notes: '',
+          couponCode: '',
+          service: 'minecraft',
+          tier: 'medium',
+          packageId: firstMedium.id,
+          agreeTerms: true,
+        },
+      });
+      assert(mediumOrder.status === 201, 'order tier Medium → 201 (tier sudah tersedia)');
+      assert(
+        mediumOrder.json?.data?.order?.total === firstMedium.price,
+        'harga Medium dihitung server dari katalog',
+      );
+
+      const wrongTier = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli Medium',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'medium@example.com',
+          serverName: 'server-medium',
+          notes: '',
+          couponCode: '',
+          service: 'minecraft',
+          tier: 'medium',
+          packageId: 'high-4c8g',
+          agreeTerms: true,
+        },
+      });
+      assert(wrongTier.status === 422, 'paket High dipakai pada tier Medium → 422');
+    }
+
+    // Admin menutup penjualan VPS → order ditolak 409, lalu dibuka kembali.
+    const closeVps = await request('/api/admin/settings', {
+      method: 'PUT',
+      jar: adminJar,
+      headers: { 'x-csrf-token': csrfToken },
+      body: { catalogStatus: { low: 'available', medium: 'available', high: 'available', vps: 'ongoing' } },
+    });
+    assert(closeVps.status === 200, 'admin/owner mengubah ketersediaan katalog → 200');
+    if (firstVps) {
+      const blocked = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli VPS',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'vps@example.com',
+          serverName: 'app-produksi',
+          notes: '',
+          couponCode: '',
+          service: 'vps',
+          packageId: firstVps.id,
+          agreeTerms: true,
+        },
+      });
+      assert(blocked.status === 409, 'VPS berstatus ongoing → order ditolak 409');
+    }
+    const reopenVps = await request('/api/admin/settings', {
+      method: 'PUT',
+      jar: adminJar,
+      headers: { 'x-csrf-token': csrfToken },
+      body: { catalogStatus: { low: 'available', medium: 'available', high: 'available', vps: 'available' } },
+    });
+    assert(reopenVps.status === 200, 'ketersediaan VPS dikembalikan → 200');
+
+    const vpsPage = await request('/vps');
+    assert(vpsPage.status === 200, '/vps → 200');
 
     // ── Test 10: kupon
     console.log('Test 10 — Kupon');
