@@ -33,7 +33,14 @@ const FIELDS: { key: keyof PricingFormValues; label: string; hint: string }[] = 
   { key: 'minPrice', label: 'Harga Minimum (Rp)', hint: 'Harga tidak akan berada di bawah nilai ini.' },
 ];
 
-export function PricingForm({ initial, defaultPricing }: { initial: PricingFormValues; defaultPricing: PricingFormValues }) {
+export interface PricingFormProps {
+  initial: PricingFormValues;
+  defaultPricing: PricingFormValues;
+  /** Mode baca-saja untuk peran tanpa izin pricing.manage (mis. Staff). */
+  readOnly?: boolean;
+}
+
+export function PricingForm({ initial, defaultPricing, readOnly = false }: PricingFormProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [form, setForm] = useState<PricingFormValues>(initial);
@@ -47,6 +54,7 @@ export function PricingForm({ initial, defaultPricing }: { initial: PricingFormV
   const examplePrice = form.base + 2 * form.perCore + 4 * form.perGbRam + 20 * form.perGbStorage;
 
   const save = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     try {
       const response = await fetch('/api/admin/pricing', {
@@ -66,20 +74,29 @@ export function PricingForm({ initial, defaultPricing }: { initial: PricingFormV
     } finally {
       setSaving(false);
     }
-  }, [form, router, toast]);
+  }, [form, readOnly, router, toast]);
 
   const reset = useCallback(() => setForm(defaultPricing), [defaultPricing]);
 
   return (
     <div className="space-y-6">
-      <Alert variant="info" title="Formula ini dipakai oleh UI dan API">
-        <p>
-          Server Builder dan API pemesanan mengimpor modul pricing yang sama. Perubahan di sini langsung berlaku
-          untuk perhitungan harga berikutnya dan dicatat di Audit Log.
-        </p>
-      </Alert>
+      {readOnly ? (
+        <Alert variant="info" title="Mode baca-saja">
+          <p>
+            Peran Anda dapat melihat formula harga agar dapat menjelaskan perhitungan kepada pelanggan, tetapi
+            mengubah formula adalah wewenang Admin.
+          </p>
+        </Alert>
+      ) : (
+        <Alert variant="info" title="Formula ini dipakai oleh UI dan API">
+          <p>
+            Server Builder dan API pemesanan mengimpor modul pricing yang sama. Perubahan di sini langsung berlaku
+            untuk perhitungan harga berikutnya dan dicatat di Audit Log.
+          </p>
+        </Alert>
+      )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <fieldset disabled={readOnly} className="m-0 grid gap-4 border-0 p-0 sm:grid-cols-2">
         {FIELDS.map((field) => (
           <Field key={field.key} label={field.label} hint={field.hint}>
             <Input
@@ -91,7 +108,7 @@ export function PricingForm({ initial, defaultPricing }: { initial: PricingFormV
             />
           </Field>
         ))}
-      </div>
+      </fieldset>
 
       <div className="rounded-lg border border-border bg-surface p-4">
         <p className="flex items-center gap-2 text-sm font-medium text-text-primary">
@@ -107,14 +124,16 @@ export function PricingForm({ initial, defaultPricing }: { initial: PricingFormV
         </p>
       </div>
 
-      <div className="flex gap-3">
-        <Button onClick={() => void save()} loading={saving}>
-          Simpan Formula
-        </Button>
-        <Button variant="outline" onClick={reset}>
-          Kembalikan ke Default
-        </Button>
-      </div>
+      {readOnly ? null : (
+        <div className="flex gap-3">
+          <Button onClick={() => void save()} loading={saving}>
+            Simpan Formula
+          </Button>
+          <Button variant="outline" onClick={reset}>
+            Kembalikan ke Default
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

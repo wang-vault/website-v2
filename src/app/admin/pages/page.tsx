@@ -1,3 +1,4 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { CmsManager, type CmsManagerConfig } from '@/components/admin/cms-manager';
 import { Tabs } from '@/components/ui/tabs';
 
@@ -41,7 +42,9 @@ const LEGAL_CONFIG: CmsManagerConfig = {
   ],
 };
 
-export default function AdminPagesPage() {
+export default async function AdminPagesPage() {
+  const { can } = await requireAdminPage('content.read');
+
   return (
     <div className="space-y-6">
       <header>
@@ -53,8 +56,16 @@ export default function AdminPagesPage() {
       </header>
       <Tabs
         items={[
-          { key: 'pages', label: 'Halaman Konten', content: <CmsManager config={PAGES_CONFIG} /> },
-          { key: 'legal', label: 'Dokumen Legal', content: <CmsManager config={LEGAL_CONFIG} /> },
+          {
+            key: 'pages',
+            label: 'Halaman Konten',
+            content: <CmsManager config={PAGES_CONFIG} readOnly={!can('content.manage')} />,
+          },
+          {
+            key: 'legal',
+            label: 'Dokumen Legal',
+            content: <CmsManager config={LEGAL_CONFIG} readOnly={!can('legal.manage')} />,
+          },
         ]}
       />
     </div>

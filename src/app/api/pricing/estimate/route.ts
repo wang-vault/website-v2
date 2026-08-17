@@ -1,14 +1,14 @@
 import { z } from 'zod';
+import { getDb } from '@/lib/db';
 import {
-  calculateHighPrice,
   calculateLowPrice,
   estimatePerformance,
   findHighPackage,
-  isOngoing,
   normalizeLowConfig,
+  TIER_DEFINITIONS,
 } from '@/lib/pricing';
+import { isOrderable, resolveCatalogStatus, unavailableCode, unavailableReason } from '@/lib/catalog';
 import { apiError, apiOk, handleApiError } from '@/lib/api';
-import type { Tier } from '@/types';
 
 const estimateSchema = z.object({
   tier: z.enum(['low', 'medium', 'high']),
@@ -20,7 +20,9 @@ const estimateSchema = z.object({
 
 /**
  * POST /api/pricing/estimate — estimasi harga & performa dari konfigurasi.
- * Memakai modul pricing yang sama dengan UI dan /api/orders.
+ * Memakai modul pricing yang sama dengan UI dan /api/orders, serta status
+ * ketersediaan yang sama (settings.catalogStatus) agar tidak ada estimasi
+ * untuk layanan yang tidak dijual.
  */
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -33,17 +35,24 @@ export async function POST(request: Request): Promise<Response> {
 
     const { tier, packageId, cpu, ramGb, storageGb } = parsed.data;
 
-    if (!['low', 'medium', 'high'].includes(tier)) {
-      return apiError(422, 'UNKNOWN_TIER', 'Tier tidak dikenal.');
-    }
-    if (isOngoing(tier as Tier)) {
-      return apiError(409, 'TIER_ONGOING', 'Tier Medium sedang dipersiapkan dan belum dapat dipesan.');
+    const db = await getDb();
+    const catalogStatus = resolveCatalogStatus(await db.settings.get());
+    const status = catalogStatus[tier];
+    if (!isOrderable(status)) {
+      return apiError(409, unavailableCode(status), unavailableReason(tier, status));
     }
 
-    if (tier === 'high') {
-      const pkg = findHighPackage(packageId ?? '');
+    // Tier dengan paket tetap (Medium & High) — harga diambil dari katalog.
+    if (TIER_DEFINITIONS[tier].mode === 'package') {
+      const dbPackage = packageId ? await db.packages.get(packageId) : null;
+      const pkg =
+        dbPackage && dbPackage.active && dbPackage.tier === tier
+          ? { id: dbPackage.id, cpu: dbPackage.cpu, ramGb: dbPackage.ramGb, storageGb: dbPackage.storageGb, price: dbPackage.price }
+          : tier === 'high'
+            ? findHighPackage(packageId ?? '')
+            : null;
       if (!pkg) {
-        return apiError(422, 'INVALID_PACKAGE', 'Paket tidak valid untuk tier High.');
+        return apiError(422, 'INVALID_PACKAGE', `Paket tidak valid untuk tier ${TIER_DEFINITIONS[tier].label}.`);
       }
       return apiOk({
         tier,
@@ -51,7 +60,7 @@ export async function POST(request: Request): Promise<Response> {
         cpu: pkg.cpu,
         ramGb: pkg.ramGb,
         storageGb: pkg.storageGb,
-        price: calculateHighPrice(pkg.id),
+        price: pkg.price,
         estimate: estimatePerformance({ tier, cpu: pkg.cpu, ramGb: pkg.ramGb, storageGb: pkg.storageGb }),
       });
     }

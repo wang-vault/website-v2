@@ -20,6 +20,9 @@ WangStore **bukan** infrastructure hosting dan **bukan** Minecraft control panel
 - [Autentikasi](#autentikasi)
 - [API](#api)
 - [Keamanan](#keamanan)
+- [Masa Aktif & Pengingat Layanan](#masa-aktif--pengingat-layanan)
+- [Perpanjangan Layanan](#perpanjangan-layanan)
+- [Katalog & Ketersediaan Layanan](#katalog--ketersediaan-layanan)
 - [Pricing & Server Builder](#pricing--server-builder)
 - [Alur Order](#alur-order)
 - [CMS](#cms)
@@ -88,8 +91,19 @@ Buka **http://localhost:3000**.
 | Email | Kata sandi | Role |
 | --- | --- | --- |
 | `admin@wangstore.id` | `WangStoreDevAdmin2026!` | Owner |
+| `admin.demo@wangstore.id` | `WangStoreDevStaff2026!` | Admin |
+| `staff.demo@wangstore.id` | `WangStoreDevStaff2026!` | Staff |
 
-Kredensial ini hanya untuk pengembangan lokal. Di production, akun Owner dibuat lewat `npm run db:seed` dengan `ADMIN_EMAIL`/`ADMIN_PASSWORD` dari environment.
+Akun Admin & Staff disediakan agar perbedaan wewenang kedua peran dapat langsung dicoba (bandingkan menu dan
+halaman yang tersedia di `/admin` untuk masing-masing akun). Kredensial ini **hanya** untuk pengembangan lokal
+(JSON datastore). Di production, akun Owner dibuat lewat `npm run db:seed` dengan `ADMIN_EMAIL`/`ADMIN_PASSWORD`
+dari environment, lalu peran Admin/Staff diberikan Owner melalui **Panel Admin → Pelanggan**, atau untuk
+bootstrap pertama:
+
+```bash
+npm run db:role -- --email staf@domain.com --role staff
+npm run db:role -- --email admin@domain.com --role admin
+```
 
 ## Konfigurasi Environment
 
@@ -108,6 +122,7 @@ Seluruh variable didokumentasikan di [.env.example](.env.example). Ringkasan kel
 | WHATSAPP | `WHATSAPP_NUMBER` (format internasional tanpa `+`) |
 | DISCORD | `DISCORD_INVITE_URL` (opsional) |
 | EMAIL | `EMAIL_PROVIDER` (`console` atau `resend`), `EMAIL_FROM`, `RESEND_API_KEY` |
+| CRON | `CRON_SECRET` (wajib agar pengingat masa aktif berjalan: `openssl rand -hex 32`) |
 | SECURITY | `RATE_LIMIT_*` |
 
 **Jangan commit secret.** `.env*` di-ignore kecuali `.env.example`. Service role key tidak pernah dikirim ke browser (hanya dipakai di server).
@@ -190,20 +205,113 @@ Ringkasan — detail lengkap: [docs/SECURITY.md](docs/SECURITY.md).
 - CSRF: double-submit cookie + validasi Origin/Host pada semua permintaan tulis.
 - Rate limiting: IP + endpoint + user; DB-backed di Supabase (serverless-compatible).
 - Validasi Zod + sanitasi rekursif + payload limit.
-- RBAC: Owner > Admin > Staff, diverifikasi ulang di **setiap** API route.
+- RBAC: Owner > Admin > Staff > Pelanggan dengan matriks izin eksplisit per peran, diverifikasi ulang di **setiap** API route dan setiap halaman admin. Matriks hidup: `/admin/roles`.
 - Audit log untuk login/logout/login gagal/create/update/delete/pricing/coupon/order/customer/CMS/legal/role/maintenance. Password & secret tidak pernah masuk log.
 - Header: CSP (dengan nonce), HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, COOP.
 - Bot protection: Cloudflare Turnstile opsional (register/contact/order) — tidak ada CAPTCHA buatan sendiri.
 - **Harga dari browser tidak pernah dipercaya** — selalu dihitung ulang server-side.
 
+## Peran & Hak Akses
+
+Empat peran dengan pembagian tanggung jawab yang tegas — matriks lengkap dirender langsung dari kode di
+**Panel Admin → Peran & Izin** (`/admin/roles`).
+
+| Peran | Fungsi | Dapat | Tidak dapat |
+| --- | --- | --- | --- |
+| **Owner** | Kepemilikan | Semua wewenang Admin + ubah role pengguna + mode maintenance | Menurunkan role Owner lain |
+| **Admin** | Konfigurasi | Semua wewenang Staff + harga, kupon, produk & paket, konten/CMS, legal, pengaturan situs, analitik, audit log | Ubah role pengguna, mode maintenance |
+| **Staff** | Operasional | Proses pesanan, balas tiket, kelola status layanan/insiden; **baca-saja** pelanggan, harga, kupon, produk, konten | Ubah harga/kupon/produk/konten/pengaturan, baca analitik & audit log |
+| **Pelanggan** | Pengguna akhir | Dashboard, pesanan, tiket, dan profil miliknya sendiri | Mengakses panel admin |
+
+Cara kerjanya:
+
+- Matriks izin eksplisit per peran di `src/lib/auth/rbac.ts` (`ROLE_PERMISSIONS`), dengan pemisahan `*.read`
+  dan `*.manage` sehingga Staff bisa **melihat** data referensi tanpa bisa mengubahnya.
+- Halaman admin memanggil `requireAdminPage(permission)`; peran tanpa izin diarahkan ke `/admin/forbidden`
+  yang menjelaskan izin apa yang kurang dan siapa yang memilikinya.
+- Menu admin difilter di server berdasarkan izin; halaman yang bersifat baca-saja ditandai ikon mata dan
+  merender formulir dalam mode nonaktif.
+- Setiap API route tetap memverifikasi izin sendiri — UI hanya kenyamanan, bukan pengaman.
+
+## Masa Aktif & Pengingat Layanan
+
+Setiap order dapat memiliki **masa aktif layanan** yang ditetapkan admin (Panel Admin → Pesanan → *Kelola*):
+
+| Field | Arti |
+| --- | --- |
+| **Aktif sejak** (`activatedAt`) | Waktu layanan mulai berjalan — diisi admin setelah layanan disiapkan. |
+| **Berlaku sampai** (`expiresAt`) | Akhir masa berlaku. Kosong = belum ditentukan. |
+
+**Pengingat otomatis** dikirim pada **H-7, H-3, H-1, dan hari kedaluwarsa** lewat notifikasi dashboard dan
+email. Sifatnya idempoten (tahap tercatat di `remindersSent`), tidak menumpuk bila scheduler sempat mati, dan
+direset saat masa aktif diperpanjang. **Status order tidak diubah otomatis** saat masa aktif habis — admin yang
+memutuskan.
+
+Penjadwalan memakai scheduler platform: `vercel.json` memuat cron harian ke `/api/cron/reminders`, dan endpoint
+tersebut **menolak semua permintaan bila `CRON_SECRET` belum diisi**. Admin juga dapat menekan **Jalankan
+Pengingat** di halaman Pesanan.
+
+## Perpanjangan Layanan
+
+Pelanggan memperpanjang layanan dari halaman order (`/order/[id]`) dengan tombol **Perpanjang 1 Bulan**:
+
+1. Sistem membuat **order perpanjangan baru** yang tertaut ke order induk (`renewalOfOrderId`).
+2. Harga dihitung ulang dari **katalog saat ini** — harga lama tidak disalin, nilai dari browser diabaikan.
+3. Order dikonfirmasi seperti pembelian biasa (WhatsApp / instruksi pembayaran).
+4. Saat admin menandai order perpanjangan **Lunas** atau **Selesai**, masa aktif induk otomatis mundur satu
+   bulan **dari tanggal kedaluwarsa lama** — sisa hari tidak hangus (dari sekarang bila sudah lewat). Siklus
+   pengingat direset otomatis.
+
+Perpanjangan **idempoten**: satu order perpanjangan hanya menambah masa aktif satu kali (`renewalAppliedAt`),
+dan hanya boleh ada satu perpanjangan berjalan per layanan.
+
+### Paket yang tidak dapat diperpanjang
+
+Paket Minecraft (Medium/High) dan paket VPS punya penanda **Dapat diperpanjang**. Untuk paket promo atau paket
+yang dihentikan, matikan penanda itu di Panel Admin → Produk, Paket & VPS. Efeknya:
+
+- Kartu paket di `/vps` menampilkan label **"Tanpa perpanjangan — layanan berhenti di akhir masa aktif"**
+  sebelum pelanggan membeli.
+- Halaman order menjelaskan alasannya, dan **server menolak** permintaan perpanjangan (409) walaupun tombol
+  dipaksa.
+
+Perpanjangan juga ditolak bila: masa aktif belum ditetapkan, paket sudah tidak ada di katalog, layanan sedang
+tidak dijual, order dibatalkan/direfund, atau sudah ada perpanjangan berjalan.
+
+## Katalog & Ketersediaan Layanan
+
+Katalog yang dijual terdiri dari tiga tier Minecraft (Low/Medium/High) dan VPS. **Ketersediaan setiap layanan
+diatur dari Panel Admin → Produk, Paket & VPS → Ketersediaan Layanan** (izin `products.manage`), bukan konstanta
+di kode:
+
+| Status | Arti |
+| --- | --- |
+| **Tersedia** | Dijual dan dapat dipesan. |
+| **Sedang Disiapkan** | Tetap ditampilkan dengan keterangan jujur, order ditolak `409 TIER_ONGOING`. |
+| **Tidak Tersedia** | Tidak ditawarkan, order ditolak `409 TIER_UNAVAILABLE`. |
+
+Status disimpan di `settings.catalogStatus` dan **diverifikasi ulang server-side** pada setiap pembuatan order
+serta estimasi harga — menyembunyikan tombol di UI bukan mekanisme pengaman.
+
+Katalog paket:
+
+- **Paket Minecraft (Medium & High)** — tabel `packages`, dikelola di tab *Produk & Paket Minecraft*.
+- **Paket VPS** — tabel `vps_packages` (vCPU, RAM, penyimpanan, transfer, OS, lokasi), dikelola di tab *Paket VPS*
+  dan tampil di halaman publik `/vps`.
+- Order menyimpan kolom `service` (`minecraft` | `vps`); order VPS tidak memakai tier.
+
+Paket bawaan hasil seed adalah **titik awal** — sesuaikan spesifikasi, lokasi, dan harga dengan kapasitas yang
+benar-benar dimiliki sebelum dijual.
+
 ## Pricing & Server Builder
 
 - **Satu shared module** `src/lib/pricing/` — UI dan API mengimpor modul yang sama. Tidak ada duplikasi formula.
-- Tier: **Low** (custom: CPU 2–16, RAM 4–32 GB, Penyimpanan 20–160 GB; 160 GB batas absolut), **Medium** (Ongoing — ditolak dengan HTTP 409), **High** (paket tetap, harga final, `high-4c8g` = Populer).
+- Tier Minecraft: **Low** (custom: CPU 2–16, RAM 4–32 GB, Penyimpanan 20–160 GB; 160 GB batas absolut), **Medium** dan **High** (paket tetap dengan harga final, dikelola admin di Panel Admin → Produk, Paket & VPS).
+- **VPS** dijual sebagai katalog paket tetap tersendiri (vCPU, RAM, penyimpanan, kuota transfer, OS, lokasi) di halaman **`/vps`**, dengan alur order yang sama.
 - Formula Low: `5.000 + CPU×7.000 + RAM×4.500 + Storage×300`, dibulatkan ke Rp500, minimum **Rp45.000/bulan** (2C/4G/20G = tepat Rp45.000).
 - Estimasi performa (TPS, pemain, CPU/RAM, plugin, grade) deterministik & shared — diberi label **Estimasi**, bukan SLA.
 - Nilai di luar batas **dipangkas** (clamp), tidak ditolak: 20/64/900 → 16/32/160.
-- Medium dan paket palsu ditolak; tidak pernah menghasilkan Rp0.
+- Paket palsu dan paket lintas-tier ditolak (422); layanan yang tidak berstatus *Tersedia* ditolak (409); tidak pernah menghasilkan Rp0.
 
 ## Alur Order
 
@@ -228,12 +336,12 @@ Seluruh konten website dikelola dari admin tanpa menyentuh kode: Homepage, About
 ```bash
 npm run typecheck   # 0 error TypeScript
 npm run lint        # 0 error, 0 warning
-npm run test        # unit test pricing engine (Vitest)
+npm run test        # unit test pricing, RBAC, katalog, pengingat & perpanjangan (Vitest)
 npm run build       # production build
-npm run smoke       # HTTP smoke test (64 acceptance check)
+npm run smoke       # HTTP smoke test (126 acceptance check)
 ```
 
-`npm run ci` menjalankan semuanya. Smoke test mencakup: harga paket High tepat, minimum Low 45.000, normalisasi 20/64/900 → 16/32/160, Medium → 409, paket palsu → 422, halaman publik → 200, `/dashboard` → `/login`, admin salah/benar + RBAC, CSRF lintas origin ditolak, kupon valid/kedaluwarsa/limit/diskon client diabaikan.
+`npm run ci` menjalankan semuanya. Smoke test mencakup: harga paket High tepat, minimum Low 45.000, normalisasi 20/64/900 → 16/32/160, Medium → 409, paket palsu → 422, halaman publik → 200, `/dashboard` → `/login`, admin salah/benar + RBAC, pemisahan wewenang Staff vs Admin vs Owner (staff dapat operasional & baca-saja, ditolak untuk harga/CMS/branding/audit/analitik; admin ditolak untuk mode maintenance), CSRF lintas origin ditolak, kupon valid/kedaluwarsa/limit/diskon client diabaikan.
 
 > **CI/CD (GitHub Actions)** — workflow typecheck, lint, test, build, smoke test, `npm audit`, dan CodeQL tersedia sebagai template di [`.github/workflow-templates/`](.github/workflow-templates/) (beberapa organisasi membatasi izin `workflows` untuk bot). Untuk mengaktifkan, salin `ci.yml` ke `.github/workflows/` — langkahnya ada di [`.github/workflow-templates/README.md`](.github/workflow-templates/README.md).
 
@@ -255,6 +363,7 @@ npm run smoke       # HTTP smoke test (64 acceptance check)
 - [ ] `database/schema.sql` dijalankan
 - [ ] RLS dikonfigurasi
 - [ ] Akun Owner dibuat (`npm run db:seed`)
+- [ ] Peran Admin/Staff diberikan lewat panel atau `npm run db:role`
 - [ ] Environment variables Vercel dikonfigurasi
 - [ ] Production URL dikonfigurasi (`NEXT_PUBLIC_APP_URL`)
 - [ ] Build berhasil

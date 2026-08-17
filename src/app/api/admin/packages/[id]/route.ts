@@ -5,11 +5,13 @@ import { clientIp } from '@/lib/security/rate-limit';
 
 const packagePatchSchema = z.object({
   label: z.string().trim().min(2).max(120).optional(),
+  tier: z.enum(['medium', 'high']).optional(),
   cpu: z.number().int().min(1).max(256).optional(),
   ramGb: z.number().int().min(1).max(4096).optional(),
   storageGb: z.number().int().min(1).max(100_000).optional(),
   price: z.number().int().min(0).max(1_000_000_000).optional(),
   popular: z.boolean().optional(),
+  renewable: z.boolean().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(10_000).optional(),
 });

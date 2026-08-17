@@ -11,7 +11,12 @@ import { formatDate, formatDateTime, formatRupiah } from '@/lib/utils';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { ButtonLink } from '@/components/ui/button-link';
-import { ORDER_STATUS_LABELS, TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
+import { SERVICE_STATE_LABELS, remainingLabel, serviceState } from '@/lib/reminders';
+import { getRenewalStatus } from '@/lib/renewals/service';
+import { RenewOrder } from '@/components/orders/renew-order';
+import { TurnstileWidget } from '@/components/turnstile-widget';
+import { ORDER_STATUS_LABELS } from '@/types';
 
 export const metadata: Metadata = {
   title: 'Konfirmasi Order',
@@ -56,6 +61,11 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pa
   const settings = await db.settings.get();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const whatsappUrl = buildWhatsAppOrderUrl(order, settings, appUrl);
+
+  // Kelayakan perpanjangan dihitung server-side (paket renewable, status
+  // katalog, masa aktif, dan apakah sudah ada perpanjangan berjalan).
+  const renewal = await getRenewalStatus(db, order);
+  const parentOrder = order.renewalOfOrderId ? await db.orders.findById(order.renewalOfOrderId) : null;
 
   return (
     <div className="container-page py-10">
@@ -103,9 +113,9 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pa
               <dd className="text-right font-mono text-text-primary">{order.serverName}</dd>
             </div>
             <div className="flex justify-between gap-4 border-t border-border pt-3">
-              <dt className="text-text-secondary">Tier</dt>
+              <dt className="text-text-secondary">Layanan</dt>
               <dd className="text-right font-medium text-text-primary">
-                {TIER_LABELS[order.tier]}
+                {orderCatalogLabel(order)}
                 {order.packageId ? ` — ${order.packageId}` : ''}
               </dd>
             </div>
@@ -120,6 +130,36 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pa
             <div className="flex justify-between gap-4">
               <dt className="text-text-secondary">Penyimpanan</dt>
               <dd className="text-right font-mono text-text-primary">{order.storageGb} GB</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-t border-border pt-3">
+              <dt className="text-text-secondary">Masa aktif</dt>
+              <dd className="text-right">
+                <Badge
+                  variant={
+                    serviceState(order) === 'expired'
+                      ? 'error'
+                      : serviceState(order) === 'expiring_soon'
+                        ? 'warning'
+                        : serviceState(order) === 'active'
+                          ? 'success'
+                          : 'neutral'
+                  }
+                >
+                  {SERVICE_STATE_LABELS[serviceState(order)]}
+                </Badge>
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-secondary">Aktif sejak</dt>
+              <dd className="text-right text-text-primary">
+                {order.activatedAt ? formatDateTime(order.activatedAt) : 'Belum diaktifkan'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-secondary">Berlaku sampai</dt>
+              <dd className="text-right text-text-primary">
+                {order.expiresAt ? `${formatDateTime(order.expiresAt)} · ${remainingLabel(order.expiresAt)}` : 'Belum ditentukan'}
+              </dd>
             </div>
             {order.notes ? (
               <div className="flex justify-between gap-4">
@@ -179,6 +219,35 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pa
               <p className="mt-2 text-sm leading-relaxed text-text-secondary">{settings.paymentInstructions}</p>
             </div>
           ) : null}
+
+          {parentOrder ? (
+            <Alert variant="info" title="Order perpanjangan">
+              <p>
+                Order ini memperpanjang layanan pada order{' '}
+                <Link
+                  href={`/order/${parentOrder.id}`}
+                  className="font-mono underline underline-offset-2"
+                >
+                  {parentOrder.id}
+                </Link>
+                . Masa aktif layanan bertambah setelah pembayaran diverifikasi tim WangStore.
+              </p>
+            </Alert>
+          ) : (
+            <>
+              <TurnstileWidget siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''} />
+              <RenewOrder
+                orderId={order.id}
+                allowed={renewal.eligibility.allowed}
+                message={renewal.eligibility.message}
+                price={renewal.pricing.unitPrice}
+                months={renewal.months}
+                projectedExpiry={renewal.projectedExpiry}
+                accessToken={tokenValid ? (token ?? null) : null}
+                turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null}
+              />
+            </>
+          )}
 
           <p className="text-center text-xs leading-relaxed text-text-muted">
             <ShieldAlert className="mr-1 inline h-3.5 w-3.5 align-[-2px]" aria-hidden="true" />

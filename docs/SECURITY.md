@@ -58,22 +58,68 @@ payload limit → rate limit → maintenance → origin/CSRF → Turnstile
 → audit → notifikasi → WhatsApp URL
 ```
 
-- Medium selalu ditolak (409); paket palsu ditolak (422); total tidak pernah Rp0.
+- Ketersediaan layanan (tier Minecraft & VPS) dibaca dari `settings.catalogStatus` dan diverifikasi server-side: status `ongoing` / `unavailable` ditolak (409). Paket palsu, paket nonaktif, dan paket milik tier lain ditolak (422); total tidak pernah Rp0.
+- Order VPS memakai harga dari tabel `vps_packages` — nilai harga dari klien tidak pernah dipakai.
 - Halaman konfirmasi order: hanya pemilik (login), staff, atau pemegang token akses (hash SHA-256 disimpan; token tidak disimpan).
 - Perubahan status order oleh staff diaudit; harga order **tidak dapat diubah**.
 
 ## 8. RBAC
 
-Hierarchy: Owner > Admin > Staff > Customer. Matriks di `src/lib/auth/rbac.ts`. Aturan khusus:
+Hierarchy: Owner > Admin > Staff > Customer. Matriks izin **eksplisit per role** di `src/lib/auth/rbac.ts`
+(`ROLE_PERMISSIONS`) — bukan sekadar perbandingan angka hierarki. Admin mewarisi seluruh izin Staff, Owner
+mewarisi seluruh izin Admin, dan pewarisan itu ditulis eksplisit agar dapat diuji (`src/lib/auth/rbac.test.ts`).
+
+Pembagian peran:
+
+| Peran | Fungsi | Wewenang inti |
+| --- | --- | --- |
+| **Staff** | Operasional | Order (baca + ubah status), tiket (baca + balas), status layanan/insiden/jendela maintenance. Akses **baca-saja** ke pelanggan, harga, kupon, produk, konten, pengaturan. |
+| **Admin** | Konfigurasi | Seluruh izin Staff + ubah harga, kupon, produk, paket, konten, legal, pengaturan situs, serta baca analitik & audit log. |
+| **Owner** | Kepemilikan | Seluruh izin Admin + ubah role pengguna dan mode maintenance. |
+
+Aturan khusus:
 
 - Perubahan role: Owner-only; role Owner tidak dapat diturunkan; hanya Owner yang menetapkan role Owner.
 - Mode maintenance: Owner-only.
-- Audit log: Admin+ (customer/staff tidak dapat membaca).
-- Staff tidak dapat mengubah harga/kupon/CMS/legal.
+- Audit log & analitik: Admin+ (customer/staff tidak dapat membaca).
+- Staff tidak dapat mengubah harga/kupon/produk/CMS/legal/settings — hanya membacanya.
+- `PUT /api/admin/settings` memeriksa izin **per grup field**: status layanan (Staff), mode maintenance (Owner),
+  sisanya (Admin).
+- Resource CMS memiliki `readPermission` dan `writePermission` terpisah, sehingga Staff dapat membaca konten
+  tetapi hanya dapat menulis resource status (`incidents`, `maintenanceWindows`).
+
+Penegakan berlapis (defense in depth):
+
+1. **Middleware (edge)** — memblokir non-staf di seluruh `/admin`.
+2. **Halaman** — setiap halaman admin memanggil `requireAdminPage(permission)` (`src/lib/auth/page-guards.ts`);
+   role tanpa izin diarahkan ke `/admin/forbidden` yang menjelaskan izin yang kurang.
+3. **API** — setiap route memanggil `requireAdmin(permission)`; ini satu-satunya lapisan yang menentukan.
+4. **UI** — menu difilter di server (`src/lib/admin/nav.ts`) dan komponen dirender `readOnly`. Ini kenyamanan,
+   **bukan** mekanisme keamanan.
+
+## 8a. Perpanjangan Layanan
+
+- Kelayakan perpanjangan (paket `renewable`, status katalog, masa aktif, duplikasi) diverifikasi **server-side**
+  pada setiap permintaan — menyembunyikan tombol di UI bukan pengaman.
+- Harga perpanjangan selalu dihitung ulang dari katalog; nilai dari klien tidak pernah dipakai.
+- Akses memakai aturan halaman order: staff, pemilik order, atau pemegang token akses.
+- Satu order perpanjangan hanya dapat menambah masa aktif **satu kali** (`renewalAppliedAt`), sehingga
+  perubahan status berulang tidak bisa dipakai menambah masa aktif berkali-kali.
+- Endpoint perpanjangan memakai kuota rate limit order dan tetap melalui validasi Origin/CSRF serta Turnstile.
+
+## 8b. Endpoint Terjadwal (Cron)
+
+`/api/cron/reminders` adalah satu-satunya endpoint terjadwal:
+
+- **Fail closed**: bila `CRON_SECRET` tidak dikonfigurasi, seluruh permintaan ditolak 401.
+- Perbandingan secret **konstan-waktu**; diterima lewat `Authorization: Bearer` (Vercel Cron) atau
+  header `x-cron-secret`.
+- Respons tidak memuat data pelanggan — hanya jumlah order diperiksa, jumlah pengingat terkirim, dan tahapnya.
+- Setiap pengingat tercatat di audit log dengan aktor `system`.
 
 ## 9. Audit Log
 
-Dicatat: login, logout, login gagal, register, verifikasi email, reset password, create/update/delete (order, coupon, product, package, ticket, CMS, legal, settings, pricing, profile, role), perubahan maintenance.
+Dicatat: login, logout, login gagal, register, verifikasi email, reset password, create/update/delete (order, coupon, product, package, VPS package, ticket, CMS, legal, settings, pricing, profile, role), perubahan masa aktif layanan, penerapan perpanjangan (`apply_renewal`), pengiriman pengingat (`service_reminder`), dan perubahan maintenance.
 
 Data: actor, action, resource, resourceId, timestamp, IP, metadata (tanpa password/secret). Di Supabase, log ditulis dalam transaksi pembuatan order. RLS memblokir pembacaan audit oleh role client.
 

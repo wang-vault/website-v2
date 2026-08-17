@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getDb } from '@/lib/db';
+import { resolveCatalogStatus } from '@/lib/catalog';
 import { getSession } from '@/lib/auth/session';
 import { ServerBuilder, type BuilderSession } from '@/components/builder/server-builder';
 import { TurnstileWidget } from '@/components/turnstile-widget';
@@ -63,6 +64,7 @@ export default async function ServerBuilderPage() {
         session={session}
         packages={activePackages}
         pricing={pricing}
+        catalogStatus={resolveCatalogStatus(settings)}
         whatsappNumber={settings.whatsappNumber}
         turnstileSiteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? null}
       />

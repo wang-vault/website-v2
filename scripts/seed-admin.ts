@@ -12,6 +12,7 @@ import path from 'node:path';
 import { SupabaseDataStore } from '../src/lib/db/supabase-store';
 import { hashPassword } from '../src/lib/auth/password';
 import { generateId, toIso } from '../src/lib/utils';
+import { DEFAULT_CATALOG_STATUS } from '../src/types';
 import type { SettingsRecord, UserRecord } from '../src/types';
 
 /** Memuat .env.local sederhana (Next.js memuatnya otomatis hanya saat `next` berjalan). */
@@ -103,6 +104,7 @@ async function main(): Promise<void> {
       maintenanceMessage: 'WangStore sedang dalam pemeliharaan terjadwal. Kami akan segera kembali.',
       maintenanceEstimatedRestoration: '',
       maintenanceAllowedPaths: ['/status'],
+      catalogStatus: { ...DEFAULT_CATALOG_STATUS },
       platformStatus: 'operational',
       services: [
         { name: 'Website & API', status: 'operational', description: 'Halaman web, Server Builder, dan API pemesanan.' },

@@ -1,5 +1,5 @@
 import { formatRupiah } from '@/lib/utils';
-import { TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
 import type { OrderRecord, SettingsRecord } from '@/types';
 
 export const PURCHASE_WARNING =
@@ -31,8 +31,8 @@ export function buildWhatsAppOrderUrl(
     `Email: ${order.customerEmail}`,
     `Nama Server: ${order.serverName}`,
     '',
-    `Tier: ${TIER_LABELS[order.tier]}${order.packageId ? ` — ${order.packageId}` : ''}`,
-    `CPU: ${order.cpu} vCore`,
+    `Layanan: ${orderCatalogLabel(order)}${order.packageId ? ` — ${order.packageId}` : ''}`,
+    `CPU: ${order.cpu} ${order.service === 'vps' ? 'vCPU' : 'vCore'}`,
     `RAM: ${order.ramGb} GB`,
     `Penyimpanan: ${order.storageGb} GB`,
     '',
@@ -72,7 +72,7 @@ export function buildClientOrderSummary(input: {
     `Email: ${input.customerEmail}`,
     `Nama Server: ${input.serverName}`,
     '',
-    `Tier: ${input.tier}${input.packageId ? ` — ${input.packageId}` : ''}`,
+    `Layanan: ${input.tier}${input.packageId ? ` — ${input.packageId}` : ''}`,
     `CPU: ${input.cpu} vCore`,
     `RAM: ${input.ramGb} GB`,
     `Penyimpanan: ${input.storageGb} GB`,

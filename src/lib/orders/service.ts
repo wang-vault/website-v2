@@ -2,26 +2,33 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { getDb } from '@/lib/db';
 import {
-  calculateHighPrice,
   calculateLowPrice,
   findHighPackage,
-  isOngoing,
   normalizeLowConfig,
   TIER_DEFINITIONS,
 } from '@/lib/pricing';
+import { isOrderable, resolveCatalogStatus, unavailableCode, unavailableReason } from '@/lib/catalog';
 import { buildWhatsAppOrderUrl } from '@/lib/whatsapp';
 import { sanitizeObject } from '@/lib/security/sanitize';
 import { ApiErrorException } from '@/lib/api';
 import { formatRupiah } from '@/lib/utils';
-import type { OrderRecord, Tier } from '@/types';
+import type { DataStore } from '@/lib/db/types';
+import type { OrderRecord, ServiceType, Tier } from '@/types';
 
 /**
  * Service pembuatan order — SATU-SATUNYA jalur pembuatan order.
  *
  * Urutan (sesuai spesifikasi):
- * request → Zod validation → normalization → verify tier → reject ongoing
- * → verify package (High) → verify coupon → server-side pricing
+ * request → Zod validation → normalization → verify layanan/tier → reject
+ * ongoing/unavailable → verify package → verify coupon → server-side pricing
  * → create order (transaksional) → audit log → WhatsApp URL → response.
+ *
+ * Dua layanan didukung:
+ * - minecraft : tier Low (konfigurasi custom) serta Medium & High (paket tetap).
+ * - vps       : paket tetap dari katalog VPS.
+ *
+ * Ketersediaan setiap layanan dibaca dari settings.catalogStatus (dapat diubah
+ * admin) dan diverifikasi di sini — bukan konstanta di kode.
  *
  * Harga dari klien DIABAIKAN SEPENUHNYA dan dihitung ulang di server.
  */
@@ -45,7 +52,8 @@ export const orderSchema = z.object({
     .regex(/^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$/, 'Nama server hanya boleh huruf, angka, spasi, titik, dan strip.'),
   notes: z.string().trim().max(2000, 'Catatan maksimal 2000 karakter.').optional().default(''),
   couponCode: z.string().trim().max(40).optional().default(''),
-  tier: z.enum(['low', 'medium', 'high']),
+  service: z.enum(['minecraft', 'vps']).optional().default('minecraft'),
+  tier: z.enum(['low', 'medium', 'high']).nullable().optional(),
   // Nilai dari klien hanya dipakai sebagai bahan normalisasi — harga selalu dihitung server.
   packageId: z.string().trim().max(80).nullable().optional(),
   cpu: z.number().int().min(0).max(1024).optional().default(0),
@@ -75,57 +83,124 @@ function hashAccessToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export function resolveOrderConfig(input: {
-  tier: Tier;
+export interface ResolvedOrderConfig {
+  service: ServiceType;
+  tier: Tier | null;
+  cpu: number;
+  ramGb: number;
+  storageGb: number;
+  packageId: string | null;
+  unitPrice: number;
+  /** Deskripsi item order yang tersimpan (label paket / konfigurasi custom). */
+  description: string;
+}
+
+export interface ResolveOrderConfigInput {
+  service: ServiceType;
+  tier: Tier | null;
   packageId: string | null;
   cpu: number;
   ramGb: number;
   storageGb: number;
-}): { cpu: number; ramGb: number; storageGb: number; packageId: string | null; unitPrice: number } {
-  const tier = input.tier;
+}
 
-  // Verify tier — tier tidak dikenal langsung ditolak.
-  const def = TIER_DEFINITIONS[tier];
-  if (!def) {
-    throw new ApiErrorException(422, 'UNKNOWN_TIER', 'Tier tidak dikenal.');
-  }
+/**
+ * Menentukan konfigurasi final dan HARGA order di sisi server.
+ * Membutuhkan datastore karena katalog (paket Minecraft, paket VPS) dan
+ * status ketersediaan kini dikelola admin di basis data.
+ */
+export async function resolveOrderConfig(
+  db: DataStore,
+  input: ResolveOrderConfigInput,
+): Promise<ResolvedOrderConfig> {
+  const settings = await db.settings.get();
+  const catalogStatus = resolveCatalogStatus(settings);
 
-  // Reject ongoing (Medium) — HTTP 409.
-  if (isOngoing(tier)) {
-    throw new ApiErrorException(
-      409,
-      'TIER_ONGOING',
-      'Tier Medium sedang dipersiapkan dan belum dapat dipesan.',
-    );
-  }
-
-  if (tier === 'high') {
+  // ── Layanan VPS: paket tetap dari katalog VPS.
+  if (input.service === 'vps') {
+    const status = catalogStatus.vps;
+    if (!isOrderable(status)) {
+      throw new ApiErrorException(409, unavailableCode(status), unavailableReason('vps', status));
+    }
     const packageId = input.packageId ?? '';
-    const pkg = findHighPackage(packageId);
-    if (!pkg) {
-      throw new ApiErrorException(422, 'INVALID_PACKAGE', 'Paket tidak valid untuk tier High.');
+    const pkg = packageId ? await db.vpsPackages.get(packageId) : null;
+    if (!pkg || !pkg.active) {
+      throw new ApiErrorException(422, 'INVALID_PACKAGE', 'Paket VPS tidak valid atau tidak tersedia.');
     }
     return {
-      cpu: pkg.cpu,
+      service: 'vps',
+      tier: null,
+      cpu: pkg.vcpu,
       ramGb: pkg.ramGb,
       storageGb: pkg.storageGb,
-      packageId,
-      unitPrice: calculateHighPrice(packageId),
+      packageId: pkg.id,
+      unitPrice: pkg.price,
+      description: `VPS ${pkg.label} (${pkg.vcpu} vCPU / ${pkg.ramGb} GB RAM / ${pkg.storageGb} GB)`,
     };
   }
 
-  // Tier Low: normalisasi (clamp) nilai dari klien.
+  // ── Layanan Minecraft: verify tier.
+  const tier = input.tier;
+  const def = tier ? TIER_DEFINITIONS[tier] : undefined;
+  if (!tier || !def) {
+    throw new ApiErrorException(422, 'UNKNOWN_TIER', 'Tier tidak dikenal.');
+  }
+
+  // Reject tier yang sedang disiapkan / tidak tersedia — HTTP 409.
+  const tierStatus = catalogStatus[tier];
+  if (!isOrderable(tierStatus)) {
+    throw new ApiErrorException(409, unavailableCode(tierStatus), unavailableReason(tier, tierStatus));
+  }
+
+  // Tier dengan paket tetap (Medium & High): paket wajib valid, aktif, dan
+  // benar-benar milik tier tersebut. Harga diambil dari katalog, bukan klien.
+  if (def.mode === 'package') {
+    const packageId = input.packageId ?? '';
+    const pkg = packageId ? await db.packages.get(packageId) : null;
+    if (pkg && pkg.active && pkg.tier === tier) {
+      return {
+        service: 'minecraft',
+        tier,
+        cpu: pkg.cpu,
+        ramGb: pkg.ramGb,
+        storageGb: pkg.storageGb,
+        packageId: pkg.id,
+        unitPrice: pkg.price,
+        description: `${pkg.label} (${pkg.cpu} vCore / ${pkg.ramGb} GB / ${pkg.storageGb} GB)`,
+      };
+    }
+    // Fallback katalog bawaan tier High bila basis data belum berisi paket.
+    const fallback = tier === 'high' ? findHighPackage(packageId) : null;
+    if (!fallback) {
+      throw new ApiErrorException(422, 'INVALID_PACKAGE', `Paket tidak valid untuk tier ${def.label}.`);
+    }
+    return {
+      service: 'minecraft',
+      tier,
+      cpu: fallback.cpu,
+      ramGb: fallback.ramGb,
+      storageGb: fallback.storageGb,
+      packageId: fallback.id,
+      unitPrice: fallback.price,
+      description: `${fallback.label} (${fallback.cpu} vCore / ${fallback.ramGb} GB / ${fallback.storageGb} GB)`,
+    };
+  }
+
+  // Tier Low: normalisasi (clamp) nilai dari klien lalu hitung harga formula.
   const normalized = normalizeLowConfig({
     cpu: input.cpu,
     ramGb: input.ramGb,
     storageGb: input.storageGb,
   });
   return {
+    service: 'minecraft',
+    tier,
     cpu: normalized.cpu,
     ramGb: normalized.ramGb,
     storageGb: normalized.storageGb,
     packageId: null,
     unitPrice: calculateLowPrice(normalized),
+    description: `Server custom (${normalized.cpu} vCore / ${normalized.ramGb} GB / ${normalized.storageGb} GB)`,
   };
 }
 
@@ -157,9 +232,10 @@ export async function createOrder(
 
   const db = await getDb();
 
-  // 3–5. Verify tier → reject ongoing → verify package → harga server-side.
-  const config = resolveOrderConfig({
-    tier: input.tier,
+  // 3–5. Verify layanan/tier → reject ongoing → verify package → harga server-side.
+  const config = await resolveOrderConfig(db, {
+    service: input.service,
+    tier: input.tier ?? null,
     packageId: input.packageId ?? null,
     cpu: input.cpu,
     ramGb: input.ramGb,
@@ -172,7 +248,7 @@ export async function createOrder(
   if (input.couponCode) {
     couponResult = await db.coupons.validate({
       code: input.couponCode,
-      tier: input.tier,
+      tier: config.tier,
       packageId: config.packageId,
       subtotal: config.unitPrice,
       customerKey,
@@ -199,7 +275,8 @@ export async function createOrder(
       customerEmail: input.customerEmail.toLowerCase(),
       serverName: input.serverName,
       notes: input.notes,
-      tier: input.tier,
+      service: config.service,
+      tier: config.tier,
       packageId: config.packageId,
       cpu: config.cpu,
       ramGb: config.ramGb,
@@ -210,11 +287,18 @@ export async function createOrder(
       total,
       status: 'pending',
       ipAddress: context.ipAddress,
+      renewalOfOrderId: null,
+      renewalAppliedAt: null,
+      // Masa aktif belum ditetapkan saat order dibuat — admin mengisinya
+      // setelah layanan benar-benar disiapkan.
+      activatedAt: null,
+      expiresAt: null,
+      remindersSent: [],
+      lastReminderAt: null,
       accessTokenHash: hashAccessToken(accessToken),
     },
     item: {
-      description:
-        config.packageId ?? `Server ${input.tier === 'low' ? 'custom' : 'paket'} (${config.cpu} vCore / ${config.ramGb} GB / ${config.storageGb} GB)`,
+      description: config.description,
       quantity: 1,
       unitPrice: config.unitPrice,
       total,

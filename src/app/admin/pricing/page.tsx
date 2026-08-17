@@ -1,9 +1,11 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { getDb } from '@/lib/db';
 import { PricingForm } from '@/components/admin/pricing-form';
 import { DEFAULT_LOW_PRICING, HIGH_PACKAGES } from '@/lib/pricing';
 import { formatRupiahPerMonth } from '@/lib/utils';
 
 export default async function AdminPricingPage() {
+  const { can } = await requireAdminPage('pricing.read');
   const db = await getDb();
   const rules = await db.pricing.get();
   const packages = await db.packages.list();
@@ -31,6 +33,7 @@ export default async function AdminPricingPage() {
             minPrice: rules.minPrice,
           }}
           defaultPricing={DEFAULT_LOW_PRICING}
+          readOnly={!can('pricing.manage')}
         />
       </section>
 

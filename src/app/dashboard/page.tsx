@@ -6,7 +6,8 @@ import { StatCard } from '@/components/ui/misc';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDate, formatRupiah } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { ORDER_STATUS_LABELS, TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
+import { ORDER_STATUS_LABELS } from '@/types';
 import { EmptyState } from '@/components/ui/state';
 
 export default async function DashboardPage() {
@@ -74,7 +75,7 @@ export default async function DashboardPage() {
                         {order.id}
                       </Link>
                       <p className="text-xs text-text-muted">
-                        {TIER_LABELS[order.tier]} {order.packageId ? `· ${order.packageId}` : ''} · {formatDate(order.createdAt)}
+                        {orderCatalogLabel(order)} {order.packageId ? `· ${order.packageId}` : ''} · {formatDate(order.createdAt)}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">

@@ -14,6 +14,7 @@ import type {
   OrderRecord,
   OrderStatus,
   PackageRecord,
+  VpsPackageRecord,
   CmsPageRecord,
   PricingRulesRecord,
   ProductRecord,
@@ -84,6 +85,13 @@ export interface PackageRepository {
   remove(id: string): Promise<void>;
 }
 
+export interface VpsPackageRepository {
+  list(): Promise<VpsPackageRecord[]>;
+  get(id: string): Promise<VpsPackageRecord | null>;
+  upsert(pkg: VpsPackageRecord): Promise<void>;
+  remove(id: string): Promise<void>;
+}
+
 export interface PricingRepository {
   get(): Promise<PricingRulesRecord>;
   update(rules: PricingRulesRecord): Promise<void>;
@@ -109,7 +117,8 @@ export interface CouponRepository {
    */
   validate(input: {
     code: string;
-    tier: Tier;
+    /** null untuk layanan non-tier (VPS) — kupon bertarget tier tidak berlaku. */
+    tier: Tier | null;
     packageId: string | null;
     subtotal: number;
     customerKey: string;
@@ -132,6 +141,19 @@ export interface OrderRepository {
     pageSize: number;
   }): Promise<Paginated<OrderRecord>>;
   updateStatus(id: string, status: OrderStatus): Promise<OrderRecord | null>;
+  /** Menyimpan masa aktif layanan (dan mereset tahap pengingat bila perlu). */
+  updateServicePeriod(
+    id: string,
+    input: { activatedAt: string | null; expiresAt: string | null; remindersSent: number[] },
+  ): Promise<OrderRecord | null>;
+  /** Order yang memiliki tanggal kedaluwarsa — sumber data pengingat. */
+  listWithExpiry(input?: { limit?: number }): Promise<OrderRecord[]>;
+  /** Menandai satu tahap pengingat sebagai terkirim (idempoten). */
+  markReminderSent(id: string, stage: number, sentAt: string): Promise<OrderRecord | null>;
+  /** Order perpanjangan yang menunjuk ke order induk tertentu. */
+  listRenewals(parentOrderId: string): Promise<OrderRecord[]>;
+  /** Menandai order perpanjangan sudah diterapkan ke masa aktif induk. */
+  markRenewalApplied(id: string, appliedAt: string): Promise<OrderRecord | null>;
   stats(): Promise<OrderStats>;
 }
 
@@ -266,6 +288,7 @@ export interface DataStore {
   profiles: ProfileRepository;
   products: ProductRepository;
   packages: PackageRepository;
+  vpsPackages: VpsPackageRepository;
   pricing: PricingRepository;
   coupons: CouponRepository;
   orders: OrderRepository;

@@ -1,6 +1,9 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { CouponsManager } from '@/components/admin/coupons-manager';
 
-export default function AdminCouponsPage() {
+export default async function AdminCouponsPage() {
+  const { can } = await requireAdminPage('coupons.read');
+
   return (
     <div className="space-y-6">
       <header>
@@ -10,7 +13,7 @@ export default function AdminCouponsPage() {
           penggunaan, dan batas per pelanggan. Semua perubahan dicatat di Audit Log.
         </p>
       </header>
-      <CouponsManager />
+      <CouponsManager readOnly={!can('coupons.manage')} />
     </div>
   );
 }

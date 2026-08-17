@@ -75,22 +75,57 @@ Artikel terbit. `GET /api/knowledge-base` / `[slug]` untuk knowledge base.
 | `POST /tickets/[id]/messages` | `message`; tiket tertutup → 409 |
 | `PATCH /tickets/[id]` | `status` (pelanggan: hanya open/closed) |
 
+## Katalog VPS
+
+| Endpoint | Keterangan |
+| --- | --- |
+| `GET /vps-packages` | Katalog VPS aktif + status ketersediaan (`available` / `ongoing` / `unavailable`). |
+
+`POST /orders` menerima `service: 'minecraft' | 'vps'` (default `minecraft`). Untuk `vps`, `packageId` wajib dan
+`tier` diabaikan; harga selalu diambil dari katalog di server. Layanan yang tidak berstatus *Tersedia* ditolak
+dengan `409 TIER_ONGOING` / `409 TIER_UNAVAILABLE`.
+
+## Perpanjangan
+
+| Endpoint | Keterangan |
+| --- | --- |
+| `GET /api/orders/[id]/renew` | Kelayakan & harga perpanjangan (staff, pemilik order, atau `?token=`). |
+| `POST /api/orders/[id]/renew` | Membuat order perpanjangan (body: `agreeTerms: true`, `turnstileToken?`). Rate limit sama dengan pembuatan order. |
+
+Kode penolakan (HTTP 409): `RENEWAL_PACKAGE_NOT_RENEWABLE`, `RENEWAL_PACKAGE_MISSING`,
+`RENEWAL_CATALOG_UNAVAILABLE`, `RENEWAL_PERIOD_NOT_SET`, `RENEWAL_ORDER_INACTIVE`, `RENEWAL_RENEWAL_PENDING`,
+`RENEWAL_IS_RENEWAL_ORDER`.
+
+## Cron
+
+| Endpoint | Keterangan |
+| --- | --- |
+| `GET/POST /api/cron/reminders` | Pengingat masa aktif (H-7, H-3, H-1, hari kedaluwarsa). Memerlukan `Authorization: Bearer $CRON_SECRET` atau header `x-cron-secret`; menolak semua permintaan bila `CRON_SECRET` kosong. Idempoten. |
+
 ## Admin (`/api/admin/*`, RBAC per route)
 
 | Endpoint | Minimum role |
 | --- | --- |
-| `GET /orders` (filter `status`, `q`, `page`) | Staff |
-| `GET/PATCH /orders/[id]` (`status`) | Staff (baca) / Staff (update) |
-| `GET /customers`, `PATCH /customers/[id]` | Admin; perubahan role → Owner |
-| `GET /tickets`, `GET/PATCH /tickets/[id]`, `POST /tickets/[id]/messages` | Staff |
-| `GET/PUT /pricing` | Admin |
-| `GET/POST /coupons`, `PATCH/DELETE /coupons/[id]` | Admin |
-| `GET/POST /products`, `PATCH/DELETE /products/[id]` | Admin |
-| `GET/POST /packages`, `PATCH/DELETE /packages/[id]` | Admin |
-| `GET /analytics` | Admin |
-| `GET/PUT /settings` | Admin; field maintenance → Owner |
-| `GET /audit-logs` (filter `resource`, `q`) | Admin |
-| `GET/POST /cms/[resource]`, `GET/PATCH/DELETE /cms/[resource]/[id]` | Admin; incidents/maintenanceWindows → Staff |
+| `GET /orders` (filter `status`, `q`, `page`) | Staff (`orders.read`) |
+| `GET/PATCH /orders/[id]` (`status`, `activatedAt`, `expiresAt`) | Staff (`orders.read` / `orders.update`). Menandai order perpanjangan `paid`/`completed` otomatis memundurkan masa aktif order induk. |
+| `GET /reminders`, `POST /reminders` | Staff (`orders.read` / `orders.update`) — ringkasan masa aktif & menjalankan pengingat manual |
+| `GET /customers` | Staff (`customers.read`, baca-saja) |
+| `PATCH /customers/[id]` | Admin (`customers.update`); perubahan role → Owner (`roles.manage`) |
+| `GET /tickets`, `GET/PATCH /tickets/[id]`, `POST /tickets/[id]/messages` | Staff (`tickets.read` / `tickets.reply`) |
+| `GET /pricing` | Staff (`pricing.read`) |
+| `PUT /pricing` | Admin (`pricing.manage`) |
+| `GET /coupons` | Staff (`coupons.read`) |
+| `POST /coupons`, `PATCH/DELETE /coupons/[id]` | Admin (`coupons.manage`) |
+| `GET /products`, `GET /packages`, `GET /vps-packages` | Staff (`products.read`) |
+| `POST /products`, `PATCH/DELETE /products/[id]` | Admin (`products.manage`) |
+| `POST /packages`, `PATCH/DELETE /packages/[id]` | Admin (`packages.manage`); tier `medium` atau `high` |
+| `POST /vps-packages`, `PATCH/DELETE /vps-packages/[id]` | Admin (`packages.manage`) |
+| `GET /analytics` | Admin (`analytics.read`) |
+| `GET /settings` | Staff (`settings.read`) |
+| `PUT /settings` | Per grup field: status layanan → Staff (`status.manage`), ketersediaan katalog (`catalogStatus`) → Admin (`products.manage`), maintenance → Owner (`maintenance.manage`), sisanya → Admin (`settings.manage`) |
+| `GET /audit-logs` (filter `resource`, `q`) | Admin (`audit.read`) |
+| `GET /cms/[resource]`, `GET /cms/[resource]/[id]` | Staff (`readPermission` resource: `content.read` / `status.read`) |
+| `POST/PATCH/DELETE /cms/[resource]` | `writePermission` resource: `content.manage` (Admin), `legal.manage` (Admin), `status.manage` (Staff untuk incidents/maintenanceWindows) |
 
 Resource CMS: `blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows` — satu generic handler dengan resource map (skema Zod + allowed fields per resource di `src/lib/cms/index.ts`).
 

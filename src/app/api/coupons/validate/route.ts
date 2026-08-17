@@ -5,7 +5,8 @@ import { requireWriteSecurity } from '@/lib/api/guards';
 
 const validateSchema = z.object({
   code: z.string().trim().min(1).max(40),
-  tier: z.enum(['low', 'medium', 'high']),
+  /** null / tidak dikirim untuk layanan non-tier seperti VPS. */
+  tier: z.enum(['low', 'medium', 'high']).nullable().optional().default(null),
   packageId: z.string().max(80).nullable(),
   subtotal: z.number().finite().min(0).max(1_000_000_000),
 });
@@ -25,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
     const db = await getDb();
     const result = await db.coupons.validate({
       code: parsed.data.code,
-      tier: parsed.data.tier,
+      tier: parsed.data.tier ?? null,
       packageId: parsed.data.packageId,
       subtotal: parsed.data.subtotal,
       customerKey: 'preview',

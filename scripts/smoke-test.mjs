@@ -116,6 +116,12 @@ async function main() {
       WHATSAPP_NUMBER: process.env.WHATSAPP_NUMBER || '6281234567890',
       EMAIL_PROVIDER: 'console',
       NEXT_PUBLIC_APP_URL: BASE,
+      // Harness melakukan login untuk banyak peran (customer, owner, admin, staff);
+      // batas login default 5/IP akan menghalangi test — bukan properti yang diuji di sini.
+      RATE_LIMIT_LOGIN_MAX: process.env.RATE_LIMIT_LOGIN_MAX || '50',
+      // Harness membuat banyak order (Low, Medium, High, VPS, kupon) dari satu IP.
+      RATE_LIMIT_ORDER_MAX: process.env.RATE_LIMIT_ORDER_MAX || '100',
+      CRON_SECRET: process.env.CRON_SECRET || 'smoke-cron-secret-0123456789abcdef',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true, // grup proses sendiri agar child next-server ikut dimatikan
@@ -207,10 +213,11 @@ async function main() {
       JSON.stringify(overflowData),
     );
 
-    // ── Test 4: Medium → 409, tidak pernah Rp0
-    console.log('Test 4 — Tier Medium ditolak (409)');
+    // ── Test 4: Medium adalah tier paket tetap — paket wajib valid, tidak pernah Rp0.
+    // (Penolakan tier berstatus ongoing/unavailable diuji pada Test 9b.)
+    console.log('Test 4 — Tier Medium memerlukan paket yang valid');
     const medium = await request('/api/orders', { method: 'POST', body: orderPayload({ tier: 'medium' }) });
-    assert(medium.status === 409, `POST medium → ${medium.status}`);
+    assert(medium.status === 422, `POST medium tanpa paket → ${medium.status}`);
     assert(medium.json?.data?.total !== 0, 'tidak pernah Rp0');
 
     // ── Test 5: fake package → 422
@@ -316,6 +323,469 @@ async function main() {
       body: { status: 'paid' },
     });
     assert(statusUpdate.status === 200 && statusUpdate.json?.data?.status === 'paid', 'ubah status order → paid');
+
+    // ── Test 9: pemisahan wewenang Admin vs Staff (akun contoh mode JSON dev)
+    console.log('Test 9 — Pemisahan peran Admin vs Staff');
+    const staffJar = [];
+    const staffLogin = await request('/api/auth/login', {
+      method: 'POST',
+      jar: staffJar,
+      body: { email: 'staff.demo@wangstore.id', password: process.env.STAFF_PASSWORD || 'WangStoreDevStaff2026!' },
+    });
+    if (staffLogin.status === 200 && staffLogin.json?.data?.role === 'staff') {
+      const staffCsrf = staffJar.find((c) => c.name === 'ws_csrf')?.value ?? '';
+      assert(true, 'login staff → 200 role staff');
+
+      // Operasional: boleh.
+      const staffOrders = await request('/api/admin/orders', { jar: staffJar });
+      assert(staffOrders.status === 200, 'staff → orders API → 200');
+      const staffTickets = await request('/api/admin/tickets', { jar: staffJar });
+      assert(staffTickets.status === 200, 'staff → tickets API → 200');
+      const staffStatus = await request('/api/admin/settings', {
+        method: 'PUT',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { platformStatus: 'operational' },
+      });
+      assert(staffStatus.status === 200, 'staff → ubah status layanan → 200');
+
+      // Baca-saja: boleh membaca.
+      const staffReadCms = await request('/api/admin/cms/blog', { jar: staffJar });
+      assert(staffReadCms.status === 200, 'staff → baca CMS blog → 200');
+      const staffReadCustomers = await request('/api/admin/customers', { jar: staffJar });
+      assert(staffReadCustomers.status === 200, 'staff → baca pelanggan → 200');
+
+      // Konfigurasi: ditolak.
+      const staffPricing = await request('/api/admin/pricing', {
+        method: 'PUT',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { base: 1, perCore: 1, perGbRam: 1, perGbStorage: 1, roundTo: 500, minPrice: 45000 },
+      });
+      assert(staffPricing.status === 403, 'staff → ubah harga → 403');
+      const staffWriteCms = await request('/api/admin/cms/faq', {
+        method: 'POST',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { question: 'Uji staff', answer: 'x', category: 'Umum', sortOrder: 1, active: true },
+      });
+      assert(staffWriteCms.status === 403, 'staff → tulis CMS → 403');
+      const staffBranding = await request('/api/admin/settings', {
+        method: 'PUT',
+        jar: staffJar,
+        headers: { 'x-csrf-token': staffCsrf },
+        body: { siteName: 'Bukan WangStore' },
+      });
+      assert(staffBranding.status === 403, 'staff → ubah branding → 403');
+      const staffAudit = await request('/api/admin/audit-logs', { jar: staffJar });
+      assert(staffAudit.status === 403, 'staff → audit log → 403');
+      const staffAnalytics = await request('/api/admin/analytics', { jar: staffJar });
+      assert(staffAnalytics.status === 403, 'staff → analitik → 403');
+
+      // Halaman khusus admin/owner dialihkan ke /admin/forbidden.
+      const staffAnalyticsPage = await request('/admin/analytics', { jar: staffJar });
+      const redirectedToForbidden =
+        (staffAnalyticsPage.redirect ?? '').includes('/admin/forbidden') ||
+        (staffAnalyticsPage.text ?? '').includes('/admin/forbidden');
+      assert(redirectedToForbidden, 'staff → /admin/analytics → /admin/forbidden', String(staffAnalyticsPage.status));
+
+      // Admin: boleh konfigurasi, tetapi bukan role & maintenance (Owner-only).
+      const adminJar2 = [];
+      const adminLogin2 = await request('/api/auth/login', {
+        method: 'POST',
+        jar: adminJar2,
+        body: { email: 'admin.demo@wangstore.id', password: process.env.STAFF_PASSWORD || 'WangStoreDevStaff2026!' },
+      });
+      if (adminLogin2.status === 200 && adminLogin2.json?.data?.role === 'admin') {
+        const adminCsrf2 = adminJar2.find((c) => c.name === 'ws_csrf')?.value ?? '';
+        const adminAudit = await request('/api/admin/audit-logs', { jar: adminJar2 });
+        assert(adminAudit.status === 200, 'admin → audit log → 200');
+        const adminMaintenance = await request('/api/admin/settings', {
+          method: 'PUT',
+          jar: adminJar2,
+          headers: { 'x-csrf-token': adminCsrf2 },
+          body: { maintenanceMode: true },
+        });
+        assert(adminMaintenance.status === 403, 'admin → mode maintenance → 403 (Owner-only)');
+      } else {
+        console.log('  … akun contoh admin tidak tersedia — dilewati');
+      }
+    } else {
+      console.log('  … akun contoh staff tidak tersedia (bukan mode JSON dev) — dilewati');
+    }
+
+    // ── Test 9b: katalog VPS & tier Medium (paket tetap) + kontrol ketersediaan
+    console.log('Test 9b — Katalog VPS, tier Medium & ketersediaan');
+    const vpsCatalog = await request('/api/vps-packages');
+    const vpsList = vpsCatalog.json?.data?.packages ?? [];
+    assert(vpsCatalog.status === 200 && Array.isArray(vpsList), '/api/vps-packages → 200');
+
+    const pricingCatalog = await request('/api/pricing');
+    const mediumPackages = pricingCatalog.json?.data?.medium?.packages ?? [];
+    assert(mediumPackages.length > 0, 'katalog paket Medium tersedia di /api/pricing');
+    assert(Boolean(pricingCatalog.json?.data?.catalogStatus), '/api/pricing menyertakan catalogStatus');
+
+    const firstVps = vpsList[0];
+    if (firstVps) {
+      const vpsOrder = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli VPS',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'vps@example.com',
+          serverName: 'app-produksi',
+          notes: '',
+          couponCode: '',
+          service: 'vps',
+          packageId: firstVps.id,
+          agreeTerms: true,
+        },
+      });
+      assert(vpsOrder.status === 201, 'order VPS → 201');
+      assert(vpsOrder.json?.data?.order?.service === 'vps', 'order tercatat sebagai layanan VPS');
+      assert(vpsOrder.json?.data?.order?.tier === null, 'order VPS tidak memakai tier');
+      assert(
+        vpsOrder.json?.data?.order?.total === firstVps.price,
+        'harga VPS dihitung server dari katalog',
+        String(vpsOrder.json?.data?.order?.total),
+      );
+
+      const fakeVps = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli VPS',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'vps@example.com',
+          serverName: 'app-produksi',
+          notes: '',
+          couponCode: '',
+          service: 'vps',
+          packageId: 'paket-hantu',
+          agreeTerms: true,
+        },
+      });
+      assert(fakeVps.status === 422, 'paket VPS palsu → 422');
+    }
+
+    const firstMedium = mediumPackages[0];
+    if (firstMedium) {
+      const mediumOrder = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli Medium',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'medium@example.com',
+          serverName: 'server-medium',
+          notes: '',
+          couponCode: '',
+          service: 'minecraft',
+          tier: 'medium',
+          packageId: firstMedium.id,
+          agreeTerms: true,
+        },
+      });
+      assert(mediumOrder.status === 201, 'order tier Medium → 201 (tier sudah tersedia)');
+      assert(
+        mediumOrder.json?.data?.order?.total === firstMedium.price,
+        'harga Medium dihitung server dari katalog',
+      );
+
+      const wrongTier = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli Medium',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'medium@example.com',
+          serverName: 'server-medium',
+          notes: '',
+          couponCode: '',
+          service: 'minecraft',
+          tier: 'medium',
+          packageId: 'high-4c8g',
+          agreeTerms: true,
+        },
+      });
+      assert(wrongTier.status === 422, 'paket High dipakai pada tier Medium → 422');
+    }
+
+    // Admin menutup penjualan VPS → order ditolak 409, lalu dibuka kembali.
+    const closeVps = await request('/api/admin/settings', {
+      method: 'PUT',
+      jar: adminJar,
+      headers: { 'x-csrf-token': csrfToken },
+      body: { catalogStatus: { low: 'available', medium: 'available', high: 'available', vps: 'ongoing' } },
+    });
+    assert(closeVps.status === 200, 'admin/owner mengubah ketersediaan katalog → 200');
+    if (firstVps) {
+      const blocked = await request('/api/orders', {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {
+          customerName: 'Pembeli VPS',
+          customerWhatsapp: '6281234567890',
+          customerEmail: 'vps@example.com',
+          serverName: 'app-produksi',
+          notes: '',
+          couponCode: '',
+          service: 'vps',
+          packageId: firstVps.id,
+          agreeTerms: true,
+        },
+      });
+      assert(blocked.status === 409, 'VPS berstatus ongoing → order ditolak 409');
+    }
+    const reopenVps = await request('/api/admin/settings', {
+      method: 'PUT',
+      jar: adminJar,
+      headers: { 'x-csrf-token': csrfToken },
+      body: { catalogStatus: { low: 'available', medium: 'available', high: 'available', vps: 'available' } },
+    });
+    assert(reopenVps.status === 200, 'ketersediaan VPS dikembalikan → 200');
+
+    const vpsPage = await request('/vps');
+    assert(vpsPage.status === 200, '/vps → 200');
+
+    // ── Test 9c: masa aktif layanan & pengingat
+    console.log('Test 9c — Masa aktif layanan & pengingat');
+    const cronSecret = process.env.CRON_SECRET || 'smoke-cron-secret-0123456789abcdef';
+
+    const cronNoAuth = await request('/api/cron/reminders');
+    assert(cronNoAuth.status === 401, 'cron tanpa secret → 401');
+    const cronWrongAuth = await request('/api/cron/reminders', {
+      headers: { authorization: 'Bearer salah' },
+    });
+    assert(cronWrongAuth.status === 401, 'cron dengan secret salah → 401');
+
+    const days = (n) => new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString();
+
+    const periodOrder = await request('/api/orders', {
+      method: 'POST',
+      headers: { origin: BASE },
+      body: {
+        customerName: 'Pelanggan Masa Aktif',
+        customerWhatsapp: '6281234567890',
+        customerEmail: 'masaaktif@example.com',
+        serverName: 'server-masa-aktif',
+        notes: '',
+        couponCode: '',
+        service: 'minecraft',
+        tier: 'low',
+        cpu: 2,
+        ramGb: 4,
+        storageGb: 20,
+        agreeTerms: true,
+      },
+    });
+    const periodOrderId = periodOrder.json?.data?.order?.id;
+    assert(Boolean(periodOrderId), 'order untuk uji masa aktif dibuat');
+    assert(periodOrder.json?.data?.order?.expiresAt === null, 'masa aktif kosong saat order dibuat');
+
+    if (periodOrderId) {
+      const invalidPeriod = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { activatedAt: days(5), expiresAt: days(1) },
+      });
+      assert(invalidPeriod.status === 422, 'exp sebelum tanggal aktif → 422');
+
+      const setPeriod = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { activatedAt: days(-30), expiresAt: days(5) },
+      });
+      assert(setPeriod.status === 200, 'admin menetapkan masa aktif → 200');
+      assert(setPeriod.json?.data?.expiresAt !== null, 'tanggal kedaluwarsa tersimpan');
+
+      const cronRun = await request('/api/cron/reminders', {
+        headers: { authorization: `Bearer ${cronSecret}` },
+      });
+      assert(cronRun.status === 200, 'cron dengan secret benar → 200');
+      assert(cronRun.json?.data?.sent >= 1, 'pengingat H-7 terkirim untuk layanan sisa 5 hari');
+
+      const cronRepeat = await request('/api/cron/reminders', {
+        headers: { authorization: `Bearer ${cronSecret}` },
+      });
+      assert(cronRepeat.json?.data?.sent === 0, 'cron idempoten — tidak mengirim ulang tahap yang sama');
+
+      const afterReminder = await request(`/api/admin/orders/${periodOrderId}`, { jar: adminJar });
+      assert(
+        Array.isArray(afterReminder.json?.data?.remindersSent) &&
+          afterReminder.json.data.remindersSent.includes(7),
+        'tahap pengingat tercatat pada order',
+      );
+
+      const extend = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { expiresAt: days(40) },
+      });
+      assert(
+        Array.isArray(extend.json?.data?.remindersSent) && extend.json.data.remindersSent.length === 0,
+        'perpanjangan mereset siklus pengingat',
+      );
+
+      const expiredPeriod = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { expiresAt: days(-1) },
+      });
+      assert(expiredPeriod.status === 200, 'masa aktif dapat diset ke masa lalu');
+      assert(
+        expiredPeriod.json?.data?.status === 'paid' || expiredPeriod.json?.data?.status !== 'expired',
+        'status order tidak diubah otomatis saat masa aktif habis',
+      );
+
+      const reminderSummary = await request('/api/admin/reminders', { jar: adminJar });
+      assert(reminderSummary.status === 200, 'ringkasan masa aktif (admin) → 200');
+      assert(
+        typeof reminderSummary.json?.data?.summary?.expired === 'number',
+        'ringkasan memuat jumlah layanan lewat masa aktif',
+      );
+
+      const manualRun = await request('/api/admin/reminders', {
+        method: 'POST',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+      });
+      assert(manualRun.status === 200, 'admin menjalankan pengingat manual → 200');
+    }
+
+    // ── Test 9d: perpanjangan layanan
+    console.log('Test 9d — Perpanjangan layanan');
+    const renewSource = await request('/api/orders', {
+      method: 'POST',
+      headers: { origin: BASE },
+      body: {
+        customerName: 'Pelanggan Perpanjangan',
+        customerWhatsapp: '6281234567890',
+        customerEmail: 'perpanjangan@example.com',
+        serverName: 'server-perpanjangan',
+        notes: '',
+        couponCode: '',
+        service: 'vps',
+        packageId: (vpsList[0] && vpsList[0].id) || 'vps-standard-2c4g',
+        agreeTerms: true,
+      },
+    });
+    const parentId = renewSource.json?.data?.order?.id;
+    const parentToken = renewSource.json?.data?.accessToken;
+
+    if (parentId && parentToken) {
+      const beforePeriod = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`);
+      assert(beforePeriod.json?.data?.allowed === false, 'tanpa masa aktif → perpanjangan ditolak');
+      assert(beforePeriod.json?.data?.reason === 'period_not_set', 'alasan penolakan: masa aktif belum diatur');
+
+      await request(`/api/admin/orders/${parentId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { activatedAt: days(-20), expiresAt: days(10) },
+      });
+
+      const eligible = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`);
+      assert(eligible.json?.data?.allowed === true, 'layanan dengan masa aktif dapat diperpanjang');
+      assert(eligible.json?.data?.price > 0, 'harga perpanjangan diambil dari katalog');
+
+      const created = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: { agreeTerms: true },
+      });
+      assert(created.status === 201, 'order perpanjangan dibuat → 201');
+      const renewalId = created.json?.data?.order?.id;
+      assert(created.json?.data?.order?.renewalOfOrderId === parentId, 'order perpanjangan tertaut ke induk');
+      assert(
+        created.json?.data?.order?.total === eligible.json?.data?.price,
+        'harga perpanjangan dihitung server, bukan dari klien',
+      );
+
+      const duplicate = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: { agreeTerms: true },
+      });
+      assert(duplicate.status === 409, 'perpanjangan ganda ditolak → 409');
+
+      const noConsent = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {},
+      });
+      assert(noConsent.status === 422, 'perpanjangan tanpa persetujuan → 422');
+
+      if (renewalId) {
+        const beforeExpiry = (await request(`/api/admin/orders/${parentId}`, { jar: adminJar })).json?.data
+          ?.expiresAt;
+        const markPaid = await request(`/api/admin/orders/${renewalId}`, {
+          method: 'PATCH',
+          jar: adminJar,
+          headers: { 'x-csrf-token': csrfToken },
+          body: { status: 'paid' },
+        });
+        assert(markPaid.json?.data?.renewalAppliedAt !== null, 'perpanjangan ditandai sudah diterapkan');
+
+        const afterParent = await request(`/api/admin/orders/${parentId}`, { jar: adminJar });
+        const afterExpiry = afterParent.json?.data?.expiresAt;
+        assert(
+          new Date(afterExpiry).getTime() > new Date(beforeExpiry).getTime(),
+          'masa aktif induk mundur setelah perpanjangan lunas',
+        );
+        assert(
+          Array.isArray(afterParent.json?.data?.remindersSent) &&
+            afterParent.json.data.remindersSent.length === 0,
+          'siklus pengingat direset setelah perpanjangan',
+        );
+
+        await request(`/api/admin/orders/${renewalId}`, {
+          method: 'PATCH',
+          jar: adminJar,
+          headers: { 'x-csrf-token': csrfToken },
+          body: { status: 'completed' },
+        });
+        const afterTwice = await request(`/api/admin/orders/${parentId}`, { jar: adminJar });
+        assert(
+          afterTwice.json?.data?.expiresAt === afterExpiry,
+          'perpanjangan idempoten — masa aktif tidak bertambah dua kali',
+        );
+
+        const renewRenewal = await request(`/api/orders/${renewalId}/renew`, { jar: adminJar });
+        assert(
+          renewRenewal.json?.data?.reason === 'is_renewal_order',
+          'order perpanjangan tidak dapat diperpanjang lagi',
+        );
+      }
+
+      // Paket yang ditandai tidak dapat diperpanjang menolak perpanjangan.
+      const vpsPackageId = (vpsList[0] && vpsList[0].id) || 'vps-standard-2c4g';
+      await request(`/api/admin/vps-packages/${vpsPackageId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { renewable: false },
+      });
+      const blocked = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`);
+      assert(blocked.json?.data?.reason === 'package_not_renewable', 'paket tanpa perpanjangan → ditolak');
+      const blockedPost = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: { agreeTerms: true },
+      });
+      assert(blockedPost.status === 409, 'server menolak perpanjangan paket non-renewable → 409');
+      await request(`/api/admin/vps-packages/${vpsPackageId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { renewable: true },
+      });
+    }
 
     // ── Test 10: kupon
     console.log('Test 10 — Kupon');

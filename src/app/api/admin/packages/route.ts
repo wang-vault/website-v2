@@ -6,19 +6,23 @@ import { clientIp } from '@/lib/security/rate-limit';
 const packageSchema = z.object({
   id: z.string().trim().min(3).max(80).regex(/^[a-z0-9-]+$/, 'Id paket hanya boleh huruf kecil, angka, dan strip.'),
   label: z.string().trim().min(2).max(120),
-  tier: z.literal('high'),
+  // Tier Low memakai konfigurasi custom (formula harga), jadi paket tetap
+  // hanya berlaku untuk Medium dan High.
+  tier: z.enum(['medium', 'high']),
   cpu: z.number().int().min(1).max(256),
   ramGb: z.number().int().min(1).max(4096),
   storageGb: z.number().int().min(1).max(100_000),
   price: z.number().int().min(0).max(1_000_000_000),
   popular: z.boolean(),
+  /** Layanan pada paket ini dapat diperpanjang pelanggan. */
+  renewable: z.boolean().optional().default(true),
   active: z.boolean(),
   sortOrder: z.number().int().min(0).max(10_000),
 });
 
 export async function GET(): Promise<Response> {
   try {
-    const { db } = await requireAdmin('packages.manage');
+    const { db } = await requireAdmin('products.read');
     return apiOk(await db.packages.list());
   } catch (error) {
     return handleApiError(error);

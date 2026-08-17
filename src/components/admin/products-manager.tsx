@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -10,8 +11,8 @@ import { Tabs } from '@/components/ui/tabs';
 import { EmptyState, LoadingState } from '@/components/ui/state';
 import { useToast } from '@/components/ui/toast';
 import { formatRupiah } from '@/lib/utils';
-import { TIER_LABELS } from '@/types';
-import type { PackageRecord, ProductRecord, Tier } from '@/types';
+import { CATALOG_LABELS, TIER_LABELS } from '@/types';
+import type { CatalogKey, PackageRecord, ProductRecord, Tier } from '@/types';
 
 function getCsrfToken(): string {
   if (typeof document === 'undefined') return '';
@@ -24,6 +25,8 @@ interface ProductForm {
   name: string;
   description: string;
   tier: Tier;
+  /** '' = entri informasional tanpa katalog yang dijual. */
+  catalogKey: CatalogKey | '';
   status: 'active' | 'inactive';
   visibility: 'public' | 'hidden';
   sortOrder: string;
@@ -34,6 +37,7 @@ const EMPTY_PRODUCT: ProductForm = {
   name: '',
   description: '',
   tier: 'low',
+  catalogKey: '',
   status: 'active',
   visibility: 'public',
   sortOrder: '0',
@@ -42,6 +46,8 @@ const EMPTY_PRODUCT: ProductForm = {
 interface PackageForm {
   id: string;
   label: string;
+  tier: 'medium' | 'high';
+  renewable: boolean;
   cpu: string;
   ramGb: string;
   storageGb: string;
@@ -54,6 +60,8 @@ interface PackageForm {
 const EMPTY_PACKAGE: PackageForm = {
   id: '',
   label: '',
+  tier: 'high',
+  renewable: true,
   cpu: '4',
   ramGb: '8',
   storageGb: '50',
@@ -63,7 +71,8 @@ const EMPTY_PACKAGE: PackageForm = {
   sortOrder: '0',
 };
 
-export function ProductsManager() {
+/** Mode baca-saja aktif untuk peran tanpa izin products.manage (mis. Staff). */
+export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
   const { toast } = useToast();
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [packages, setPackages] = useState<PackageRecord[]>([]);
@@ -99,10 +108,12 @@ export function ProductsManager() {
   }, [load]);
 
   const saveProduct = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     try {
       const payload = {
         ...productForm,
+        catalogKey: productForm.catalogKey === '' ? null : productForm.catalogKey,
         sortOrder: Number(productForm.sortOrder) || 0,
         packageId: null,
         price: null,
@@ -127,10 +138,11 @@ export function ProductsManager() {
     } finally {
       setSaving(false);
     }
-  }, [editingProductId, load, productForm, toast]);
+  }, [editingProductId, load, productForm, readOnly, toast]);
 
   const deleteProduct = useCallback(
     async (product: ProductRecord) => {
+      if (readOnly) return;
       if (!window.confirm(`Hapus produk "${product.name}"?`)) return;
       try {
         await fetch(`/api/admin/products/${product.id}`, {
@@ -143,15 +155,15 @@ export function ProductsManager() {
         toast({ variant: 'error', title: 'Jaringan bermasalah' });
       }
     },
-    [load, toast],
+    [load, readOnly, toast],
   );
 
   const savePackage = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     try {
       const payload = {
         ...packageForm,
-        tier: 'high' as const,
         cpu: Number(packageForm.cpu),
         ramGb: Number(packageForm.ramGb),
         storageGb: Number(packageForm.storageGb),
@@ -177,10 +189,11 @@ export function ProductsManager() {
     } finally {
       setSaving(false);
     }
-  }, [editingPackageId, load, packageForm, toast]);
+  }, [editingPackageId, load, packageForm, readOnly, toast]);
 
   const deletePackage = useCallback(
     async (pkg: PackageRecord) => {
+      if (readOnly) return;
       if (!window.confirm(`Hapus paket "${pkg.id}"?`)) return;
       try {
         await fetch(`/api/admin/packages/${pkg.id}`, {
@@ -193,23 +206,32 @@ export function ProductsManager() {
         toast({ variant: 'error', title: 'Jaringan bermasalah' });
       }
     },
-    [load, toast],
+    [load, readOnly, toast],
   );
 
   const productTab = (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          onClick={() => {
-            setEditingProductId(null);
-            setProductForm(EMPTY_PRODUCT);
-            setProductModal(true);
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah Produk
-        </Button>
-      </div>
+      {readOnly ? (
+        <Alert variant="info" title="Mode baca-saja">
+          <p>
+            Peran Anda dapat melihat katalog produk sebagai rujukan, tetapi menambah, mengubah, dan menghapus
+            produk adalah wewenang Admin.
+          </p>
+        </Alert>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => {
+              setEditingProductId(null);
+              setProductForm(EMPTY_PRODUCT);
+              setProductModal(true);
+            }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Tambah Produk
+          </Button>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[640px] border-collapse text-left text-sm">
           <thead>
@@ -249,6 +271,7 @@ export function ProductsManager() {
                           name: product.name,
                           description: product.description,
                           tier: product.tier,
+                          catalogKey: product.catalogKey ?? '',
                           status: product.status,
                           visibility: product.visibility,
                           sortOrder: String(product.sortOrder),
@@ -256,16 +279,18 @@ export function ProductsManager() {
                         setProductModal(true);
                       }}
                     >
-                      Edit
+                      {readOnly ? 'Lihat' : 'Edit'}
                     </Button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteProduct(product)}
-                      aria-label={`Hapus produk ${product.name}`}
-                      className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    {readOnly ? null : (
+                      <button
+                        type="button"
+                        onClick={() => void deleteProduct(product)}
+                        aria-label={`Hapus produk ${product.name}`}
+                        className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -278,23 +303,32 @@ export function ProductsManager() {
 
   const packageTab = (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          onClick={() => {
-            setEditingPackageId(null);
-            setPackageForm(EMPTY_PACKAGE);
-            setPackageModal(true);
-          }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah Paket
-        </Button>
-      </div>
+      {readOnly ? (
+        <Alert variant="info" title="Mode baca-saja">
+          <p>
+            Peran Anda dapat melihat daftar paket dan harganya, tetapi mengubah paket adalah wewenang Admin.
+          </p>
+        </Alert>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            onClick={() => {
+              setEditingPackageId(null);
+              setPackageForm(EMPTY_PACKAGE);
+              setPackageModal(true);
+            }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Tambah Paket
+          </Button>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[640px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-muted">
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Paket</th>
+              <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Tier</th>
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">CPU / RAM / Storage</th>
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Harga</th>
               <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Status</th>
@@ -308,12 +342,18 @@ export function ProductsManager() {
                   <p className="font-mono text-xs font-semibold text-text-primary">{pkg.id}</p>
                   {pkg.popular ? <Badge variant="accent">Populer</Badge> : null}
                 </td>
+                <td className="px-4 py-3">
+                  <Badge variant="neutral">{TIER_LABELS[pkg.tier]}</Badge>
+                </td>
                 <td className="px-4 py-3 font-mono text-xs">
                   {pkg.cpu} vCore / {pkg.ramGb} GB / {pkg.storageGb} GB
                 </td>
                 <td className="px-4 py-3 font-mono text-xs font-semibold">{formatRupiah(pkg.price)}/bulan</td>
                 <td className="px-4 py-3">
-                  <Badge variant={pkg.active ? 'success' : 'neutral'}>{pkg.active ? 'Aktif' : 'Nonaktif'}</Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={pkg.active ? 'success' : 'neutral'}>{pkg.active ? 'Aktif' : 'Nonaktif'}</Badge>
+                    {pkg.renewable ? null : <Badge variant="warning">Tanpa perpanjangan</Badge>}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
@@ -325,6 +365,8 @@ export function ProductsManager() {
                         setPackageForm({
                           id: pkg.id,
                           label: pkg.label,
+                          tier: pkg.tier === 'medium' ? 'medium' : 'high',
+                          renewable: pkg.renewable,
                           cpu: String(pkg.cpu),
                           ramGb: String(pkg.ramGb),
                           storageGb: String(pkg.storageGb),
@@ -336,16 +378,18 @@ export function ProductsManager() {
                         setPackageModal(true);
                       }}
                     >
-                      Edit
+                      {readOnly ? 'Lihat' : 'Edit'}
                     </Button>
-                    <button
-                      type="button"
-                      onClick={() => void deletePackage(pkg)}
-                      aria-label={`Hapus paket ${pkg.id}`}
-                      className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    {readOnly ? null : (
+                      <button
+                        type="button"
+                        onClick={() => void deletePackage(pkg)}
+                        aria-label={`Hapus paket ${pkg.id}`}
+                        className="rounded-md p-1.5 text-text-muted hover:bg-surface-muted hover:text-error"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -354,7 +398,7 @@ export function ProductsManager() {
         </table>
       </div>
       <p className="text-xs text-text-muted">
-        Harga paket High bersifat final. Perubahan harga paket berlaku untuk order baru; order lama tidak berubah.
+        Harga paket Medium & High bersifat final. Perubahan harga berlaku untuk order baru; order lama tidak berubah.
       </p>
     </div>
   );
@@ -366,17 +410,17 @@ export function ProductsManager() {
       <Tabs
         items={[
           { key: 'products', label: `Produk (${products.length})`, content: productTab },
-          { key: 'packages', label: `Paket High (${packages.length})`, content: packageTab },
+          { key: 'packages', label: `Paket Minecraft (${packages.length})`, content: packageTab },
         ]}
       />
 
       <Modal
         open={productModal}
         onClose={() => setProductModal(false)}
-        title={editingProductId ? 'Edit Produk' : 'Tambah Produk'}
+        title={readOnly ? 'Detail Produk' : editingProductId ? 'Edit Produk' : 'Tambah Produk'}
         description="Katalog produk ditampilkan di beranda dan dipakai Server Builder."
       >
-        <div className="space-y-4">
+        <fieldset disabled={readOnly} className="m-0 space-y-4 border-0 p-0">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nama" required>
               <Input
@@ -400,6 +444,24 @@ export function ProductsManager() {
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-3">
+            <Field
+              label="Katalog yang Dijual"
+              hint="Menentukan badge ketersediaan dan tautan pemesanan di beranda."
+            >
+              <Select
+                value={productForm.catalogKey}
+                onChange={(e) =>
+                  setProductForm((c) => ({ ...c, catalogKey: e.target.value as CatalogKey | '' }))
+                }
+                options={[
+                  { value: '', label: 'Tidak dijual (informasional)' },
+                  ...(['low', 'medium', 'high', 'vps'] as CatalogKey[]).map((key) => ({
+                    value: key,
+                    label: CATALOG_LABELS[key],
+                  })),
+                ]}
+              />
+            </Field>
             <Field label="Tier">
               <Select
                 value={productForm.tier}
@@ -437,22 +499,24 @@ export function ProductsManager() {
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setProductModal(false)}>
-              Batal
+              {readOnly ? 'Tutup' : 'Batal'}
             </Button>
-            <Button onClick={() => void saveProduct()} loading={saving}>
-              Simpan
-            </Button>
+            {readOnly ? null : (
+              <Button onClick={() => void saveProduct()} loading={saving}>
+                Simpan
+              </Button>
+            )}
           </div>
-        </div>
+        </fieldset>
       </Modal>
 
       <Modal
         open={packageModal}
         onClose={() => setPackageModal(false)}
-        title={editingPackageId ? 'Edit Paket' : 'Tambah Paket High'}
-        description="Paket tetap tier High dengan harga final."
+        title={readOnly ? 'Detail Paket' : editingPackageId ? 'Edit Paket' : 'Tambah Paket'}
+        description="Paket tetap tier Medium atau High dengan harga final."
       >
-        <div className="space-y-4">
+        <fieldset disabled={readOnly} className="m-0 space-y-4 border-0 p-0">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Id Paket" required hint="Contoh: high-4c8g">
               <Input
@@ -466,6 +530,16 @@ export function ProductsManager() {
               <Input
                 value={packageForm.label}
                 onChange={(e) => setPackageForm((c) => ({ ...c, label: e.target.value }))}
+              />
+            </Field>
+            <Field label="Tier" required hint="Tier Low memakai konfigurasi custom, bukan paket tetap.">
+              <Select
+                value={packageForm.tier}
+                onChange={(e) => setPackageForm((c) => ({ ...c, tier: e.target.value as 'medium' | 'high' }))}
+                options={[
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'high', label: 'High' },
+                ]}
               />
             </Field>
             <Field label="CPU (vCore)" required>
@@ -504,6 +578,11 @@ export function ProductsManager() {
               label="Tandai Populer"
             />
             <Checkbox
+              checked={packageForm.renewable}
+              onChange={(e) => setPackageForm((c) => ({ ...c, renewable: e.target.checked }))}
+              label="Dapat diperpanjang pelanggan"
+            />
+            <Checkbox
               checked={packageForm.active}
               onChange={(e) => setPackageForm((c) => ({ ...c, active: e.target.checked }))}
               label="Aktif"
@@ -511,13 +590,15 @@ export function ProductsManager() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setPackageModal(false)}>
-              Batal
+              {readOnly ? 'Tutup' : 'Batal'}
             </Button>
-            <Button onClick={() => void savePackage()} loading={saving}>
-              Simpan
-            </Button>
+            {readOnly ? null : (
+              <Button onClick={() => void savePackage()} loading={saving}>
+                Simpan
+              </Button>
+            )}
           </div>
-        </div>
+        </fieldset>
       </Modal>
 
       {products.length === 0 && packages.length === 0 ? (

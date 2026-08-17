@@ -95,7 +95,25 @@ Aplikasi **tidak** menyimpan order, user, coupon, ticket, CMS, atau audit log di
 
 ## 9. Vercel Serverless Compatibility
 
-Dilarang mengandalkan: persistent local filesystem, long-running process, systemd, PM2, Docker daemon, Nginx, cron lokal, in-memory global state sebagai database. API tidak membutuhkan proses server yang berjalan terus-menerus. Untuk scheduled task, gunakan scheduler platform (mis. Vercel Cron) atau layanan eksternal — belum diperlukan oleh fitur saat ini.
+Dilarang mengandalkan: persistent local filesystem, long-running process, systemd, PM2, Docker daemon, Nginx, cron lokal, in-memory global state sebagai database. API tidak membutuhkan proses server yang berjalan terus-menerus.
+
+### Scheduled task — pengingat masa aktif layanan
+
+Satu-satunya tugas terjadwal adalah pengingat masa aktif (`GET/POST /api/cron/reminders`). Jadwalnya sudah
+disiapkan di `vercel.json` (setiap hari 01:00 UTC ≈ 08:00 WIB):
+
+```json
+{ "crons": [{ "path": "/api/cron/reminders", "schedule": "0 1 * * *" }] }
+```
+
+Wajib mengisi environment variable **`CRON_SECRET`** (mis. `openssl rand -hex 32`). Vercel otomatis mengirim
+`Authorization: Bearer $CRON_SECRET` pada cron request; scheduler lain (cron-job.org, GitHub Actions, Supabase
+pg_cron + `http` extension) dapat memakai header `x-cron-secret`. **Tanpa `CRON_SECRET`, endpoint menolak semua
+permintaan (fail closed)** — pengingat tidak akan berjalan diam-diam tanpa proteksi.
+
+Endpoint bersifat idempoten: tahap pengingat yang sudah terkirim tidak dikirim ulang, sehingga menjalankannya
+lebih dari sekali per hari aman. Admin juga dapat menjalankannya manual dari Panel Admin → Pesanan → tombol
+**Jalankan Pengingat**.
 
 ## 10. Storage (Upload)
 

@@ -102,19 +102,69 @@ Harga dari klien diabaikan sepenuhnya. Halaman konfirmasi order diakses pemilik 
 
 ## 8. RBAC
 
-Hierarchy: **Owner > Admin > Staff** (customer di bawah semua). Matriks izin di `src/lib/auth/rbac.ts`; contoh:
+Hierarchy: **Owner > Admin > Staff** (customer di bawah semua). Matriks izin eksplisit per role di
+`src/lib/auth/rbac.ts` (`ROLE_PERMISSIONS`), dengan pemisahan tegas antara izin `*.read` dan `*.manage`:
 
 | Operasi | Minimum role |
 | --- | --- |
-| Baca/ubah status order, balas tiket | Staff |
-| Kelola kupon, formula harga, produk, paket, konten, legal, settings, analitik, audit | Admin |
+| Baca/ubah status order, balas tiket, kelola status & insiden | Staff |
+| Baca pelanggan, harga, kupon, produk, konten, settings (read-only) | Staff |
+| Ubah kupon, formula harga, produk, paket, konten, legal, settings; baca analitik & audit | Admin |
 | Ubah role pengguna, mode maintenance | Owner |
 
-Perubahan role: hanya Owner; role Owner tidak dapat diturunkan. RBAC diverifikasi ulang di **setiap** API route — bukan hanya di UI.
+Pembagian peran singkat: **Staff = operasional** (menjalankan pekerjaan harian, hanya membaca data kebijakan),
+**Admin = konfigurasi** (mengubah harga, penawaran, konten, pengaturan), **Owner = kepemilikan** (role &
+maintenance). Perubahan role: hanya Owner; role Owner tidak dapat diturunkan.
+
+Penegakan berlapis: middleware (edge) → guard halaman `requireAdminPage()` (`src/lib/auth/page-guards.ts`) →
+`requireAdmin()` di setiap API route. Navigasi difilter server-side lewat `src/lib/admin/nav.ts` dan komponen
+admin menerima prop `readOnly` untuk role tanpa izin tulis. Matriks izin hidup dapat dilihat di `/admin/roles`.
+RBAC diverifikasi ulang di **setiap** API route — bukan hanya di UI.
+
+## 8b. Katalog & Ketersediaan Layanan
+
+Dua jenis layanan dijual melalui satu alur order:
+
+| Layanan | Katalog | Penyimpanan |
+| --- | --- | --- |
+| Minecraft tier Low | konfigurasi custom + formula harga | `pricing_rules` |
+| Minecraft tier Medium & High | paket tetap | `packages` (kolom `tier`) |
+| VPS | paket tetap (vCPU, RAM, storage, transfer, OS, lokasi) | `vps_packages` |
+
+`orders.service` (`minecraft` | `vps`) menandai jenis layanan; `orders.tier` bernilai null untuk order VPS.
+
+Ketersediaan tiap katalog disimpan pada `settings.catalogStatus` (`available` | `ongoing` | `unavailable`) dan
+dibaca lewat `src/lib/catalog/`. Order service dan endpoint estimasi memverifikasi status ini sebelum
+menghitung harga, sehingga membuka/menutup penjualan cukup dilakukan Admin dari panel tanpa deploy ulang.
+
+## 8c. Masa Aktif & Pengingat
+
+`orders.activatedAt` dan `orders.expiresAt` ditetapkan admin (aktivasi layanan terjadi di luar aplikasi).
+`src/lib/reminders/` berisi logika murni (keadaan layanan, sisa hari, tahap pengingat) yang diuji unit,
+sedangkan `src/lib/reminders/service.ts` melakukan I/O: notifikasi dashboard, email, penandaan tahap terkirim
+(`remindersSent`), dan audit log.
+
+Penjadwalan memakai scheduler platform (`vercel.json` → `/api/cron/reminders`, harian). Endpoint memeriksa
+`CRON_SECRET` secara konstan-waktu dan **fail closed** bila secret belum dikonfigurasi. Tidak ada proses
+long-running. Admin dapat memicu putaran yang sama lewat `POST /api/admin/reminders`.
+
+Aplikasi tidak mengubah status order otomatis saat masa aktif habis — pengingat hanya memberi tahu.
+
+## 8d. Perpanjangan Layanan
+
+Perpanjangan dimodelkan sebagai **order baru** yang menunjuk order induk lewat `orders.renewalOfOrderId`, bukan
+mutasi order lama: riwayat pembayaran tetap utuh, harga tiap periode terekam apa adanya, audit trail jelas.
+
+- `src/lib/renewals/` — logika murni: kelayakan (`evaluateRenewal`), masa berlaku baru (`nextExpiry`, aman
+  terhadap akhir bulan), deteksi perpanjangan berjalan.
+- `src/lib/renewals/service.ts` — I/O: harga dari katalog saat ini, pembuatan order perpanjangan, penerapan ke
+  masa aktif induk (`applyRenewal`, idempoten lewat `renewalAppliedAt`).
+- `packages.renewable` & `vps_packages.renewable` — penanda paket tanpa perpanjangan.
+- Penerapan terjadi saat status order perpanjangan menjadi `paid`/`completed`; siklus pengingat lalu direset.
 
 ## 9. Generic CMS
 
-`src/lib/cms/` mendefinisikan resource map (`blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows`) dengan per resource: collection, identity field, allowed fields, skema Zod, minimum role. Dua route (`/api/admin/cms/[resource]` dan `/api/admin/cms/[resource]/[id]`) melayani seluruh modul — tidak ada 20 endpoint duplikat. UI admin memakai satu `CmsManager` yang digerakkan konfigurasi.
+`src/lib/cms/` mendefinisikan resource map (`blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows`) dengan per resource: collection, identity field, allowed fields, skema Zod, serta `readPermission` dan `writePermission` terpisah. Dua route (`/api/admin/cms/[resource]` dan `/api/admin/cms/[resource]/[id]`) melayani seluruh modul — tidak ada 20 endpoint duplikat. UI admin memakai satu `CmsManager` yang digerakkan konfigurasi.
 
 ## 10. Mode Maintenance
 

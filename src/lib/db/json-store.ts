@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { generateId, toIso } from '@/lib/utils';
 import { buildSeedData } from './seed';
+import { orderCatalogKey } from '@/lib/catalog';
+import { DEFAULT_CATALOG_STATUS } from '@/types';
 import type {
   AnnouncementRecord,
   AuditLogRecord,
@@ -18,6 +20,7 @@ import type {
   OrderItemRecord,
   OrderRecord,
   PackageRecord,
+  VpsPackageRecord,
   CmsPageRecord,
   PricingRulesRecord,
   ProductRecord,
@@ -44,6 +47,7 @@ import type {
   NotificationRepository,
   OrderRepository,
   PackageRepository,
+  VpsPackageRepository,
   Paginated,
   PricingRepository,
   ProductRepository,
@@ -70,6 +74,7 @@ export interface JsonCollections {
   profiles: ProfileRecord[];
   products: ProductRecord[];
   packages: PackageRecord[];
+  vpsPackages: VpsPackageRecord[];
   pricing: PricingRulesRecord[];
   coupons: CouponRecord[];
   couponUsages: CouponUsageRecord[];
@@ -94,6 +99,46 @@ export interface JsonCollections {
 }
 
 export type CollectionName = keyof JsonCollections;
+
+/**
+ * Mengisi koleksi dan field settings yang belum ada pada file JSON lama,
+ * sehingga penambahan fitur tidak membuat datastore lokal harus dihapus.
+ */
+function normalizeCollections(parsed: Partial<JsonCollections>): JsonCollections {
+  const collections = { ...parsed } as JsonCollections;
+  if (!Array.isArray(collections.vpsPackages)) collections.vpsPackages = [];
+  if (Array.isArray(collections.orders)) {
+    collections.orders = collections.orders.map((order: OrderRecord) => ({
+      ...order,
+      activatedAt: order.activatedAt ?? null,
+      expiresAt: order.expiresAt ?? null,
+      remindersSent: Array.isArray(order.remindersSent) ? order.remindersSent : [],
+      lastReminderAt: order.lastReminderAt ?? null,
+      renewalOfOrderId: order.renewalOfOrderId ?? null,
+      renewalAppliedAt: order.renewalAppliedAt ?? null,
+    }));
+  }
+  if (Array.isArray(collections.packages)) {
+    collections.packages = collections.packages.map((pkg: PackageRecord) =>
+      pkg.renewable === undefined ? { ...pkg, renewable: true } : pkg,
+    );
+  }
+  if (Array.isArray(collections.vpsPackages)) {
+    collections.vpsPackages = collections.vpsPackages.map((pkg: VpsPackageRecord) =>
+      pkg.renewable === undefined ? { ...pkg, renewable: true } : pkg,
+    );
+  }
+  if (Array.isArray(collections.products)) {
+    collections.products = collections.products.map((product: ProductRecord) =>
+      product.catalogKey === undefined ? { ...product, catalogKey: null } : product,
+    );
+  }
+  const settings = collections.settings?.[0];
+  if (settings && !settings.catalogStatus) {
+    collections.settings = [{ ...settings, catalogStatus: { ...DEFAULT_CATALOG_STATUS } }];
+  }
+  return collections;
+}
 
 function paginate<T>(items: T[], page: number, pageSize: number): Paginated<T> {
   const safePage = Math.max(1, Math.floor(page));
@@ -128,7 +173,10 @@ export class JsonDataStore implements DataStore {
       const raw = await fs.readFile(this.filePath, 'utf8');
       const parsed: unknown = JSON.parse(raw);
       if (parsed !== null && typeof parsed === 'object') {
-        this.collections = parsed as JsonCollections;
+        // File lama (dibuat sebelum sebuah koleksi/field ada) tetap dapat dipakai:
+        // koleksi & field yang belum ada diisi dari nilai bawaan.
+        this.collections = normalizeCollections(parsed as Partial<JsonCollections>);
+        await this.persist();
         return;
       }
     } catch {
@@ -262,6 +310,24 @@ export class JsonDataStore implements DataStore {
     },
   };
 
+  // ───────────────────────────────────────────── paket VPS
+  readonly vpsPackages: VpsPackageRepository = {
+    list: async () => [...this.data.vpsPackages].sort((a, b) => a.sortOrder - b.sortOrder),
+    get: async (id: string) => this.data.vpsPackages.find((p) => p.id === id) ?? null,
+    upsert: async (pkg: VpsPackageRecord) => {
+      await this.mutate((c) => {
+        const index = c.vpsPackages.findIndex((p) => p.id === pkg.id);
+        if (index >= 0) c.vpsPackages[index] = pkg;
+        else c.vpsPackages.push(pkg);
+      });
+    },
+    remove: async (id: string) => {
+      await this.mutate((c) => {
+        c.vpsPackages = c.vpsPackages.filter((p) => p.id !== id);
+      });
+    },
+  };
+
   // ───────────────────────────────────────────── pricing
   readonly pricing: PricingRepository = {
     get: async () => this.data.pricing[0] as PricingRulesRecord,
@@ -311,8 +377,8 @@ export class JsonDataStore implements DataStore {
       if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
         return { ok: false, code: 'LIMIT_REACHED', reason: 'Batas penggunaan kupon sudah tercapai.' };
       }
-      if (coupon.applicableTiers.length > 0 && !coupon.applicableTiers.includes(input.tier)) {
-        return { ok: false, code: 'TIER_MISMATCH', reason: 'Kupon tidak berlaku untuk tier ini.' };
+      if (coupon.applicableTiers.length > 0 && (input.tier === null || !coupon.applicableTiers.includes(input.tier))) {
+        return { ok: false, code: 'TIER_MISMATCH', reason: 'Kupon tidak berlaku untuk layanan ini.' };
       }
       if (
         coupon.applicablePackages.length > 0 &&
@@ -401,6 +467,59 @@ export class JsonDataStore implements DataStore {
       });
       return updated;
     },
+    updateServicePeriod: async (id, input) => {
+      const record = this.data.orders.find((o) => o.id === id);
+      if (!record) return null;
+      const updated: OrderRecord = {
+        ...record,
+        activatedAt: input.activatedAt,
+        expiresAt: input.expiresAt,
+        remindersSent: input.remindersSent,
+        updatedAt: toIso(),
+      };
+      await this.mutate((c) => {
+        const index = c.orders.findIndex((o) => o.id === id);
+        if (index >= 0) c.orders[index] = updated;
+      });
+      return updated;
+    },
+    listWithExpiry: async (input) => {
+      const limit = input?.limit ?? 200;
+      return this.data.orders
+        .filter((o) => Boolean(o.expiresAt))
+        .sort((a, b) => String(a.expiresAt).localeCompare(String(b.expiresAt)))
+        .slice(0, limit);
+    },
+    listRenewals: async (parentOrderId: string) =>
+      this.data.orders
+        .filter((o) => o.renewalOfOrderId === parentOrderId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    markRenewalApplied: async (id: string, appliedAt: string) => {
+      const record = this.data.orders.find((o) => o.id === id);
+      if (!record) return null;
+      const updated: OrderRecord = { ...record, renewalAppliedAt: appliedAt, updatedAt: toIso() };
+      await this.mutate((c) => {
+        const index = c.orders.findIndex((o) => o.id === id);
+        if (index >= 0) c.orders[index] = updated;
+      });
+      return updated;
+    },
+    markReminderSent: async (id: string, stage: number, sentAt: string) => {
+      const record = this.data.orders.find((o) => o.id === id);
+      if (!record) return null;
+      if (record.remindersSent.includes(stage)) return record;
+      const updated: OrderRecord = {
+        ...record,
+        remindersSent: [...record.remindersSent, stage].sort((a, b) => b - a),
+        lastReminderAt: sentAt,
+        updatedAt: toIso(),
+      };
+      await this.mutate((c) => {
+        const index = c.orders.findIndex((o) => o.id === id);
+        if (index >= 0) c.orders[index] = updated;
+      });
+      return updated;
+    },
     stats: async () => {
       const orders = this.data.orders;
       const now = new Date();
@@ -414,7 +533,7 @@ export class JsonDataStore implements DataStore {
       const customerEmails = new Set(orders.map((o) => o.customerEmail.toLowerCase()));
       const packageCounts = new Map<string, { label: string; count: number }>();
       for (const order of orders) {
-        const key = order.packageId ?? order.tier;
+        const key = order.packageId ?? orderCatalogKey(order);
         const entry = packageCounts.get(key) ?? { label: key, count: 0 };
         entry.count += 1;
         packageCounts.set(key, entry);

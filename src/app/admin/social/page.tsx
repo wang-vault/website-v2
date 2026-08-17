@@ -1,8 +1,10 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { getDb } from '@/lib/db';
 import { SettingsForm } from '@/components/admin/settings-form';
 import { Alert } from '@/components/ui/alert';
 
 export default async function AdminSocialPage() {
+  await requireAdminPage('settings.manage');
   const db = await getDb();
   const settings = await db.settings.get();
   return (

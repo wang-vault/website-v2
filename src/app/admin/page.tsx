@@ -1,44 +1,133 @@
 import Link from 'next/link';
-import { ArrowRight, CreditCard, Package, Ticket, Users } from 'lucide-react';
+import { ArrowRight, CalendarClock, CreditCard, Package, Ticket, Users } from 'lucide-react';
 import { getDb } from '@/lib/db';
 import { StatCard } from '@/components/ui/misc';
 import { formatDate, formatRupiah } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { ORDER_STATUS_LABELS, TIER_LABELS } from '@/types';
+import { orderCatalogLabel } from '@/lib/catalog';
+import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@/types';
 import { EmptyState } from '@/components/ui/state';
+import { requireAdminPage } from '@/lib/auth/page-guards';
+import { SERVICE_STATE_LABELS, remainingLabel, serviceState, summarizeExpiry } from '@/lib/reminders';
+import { ROLE_DEFINITIONS, type Permission } from '@/lib/auth/rbac';
+
+interface QuickAction {
+  href: string;
+  label: string;
+  description: string;
+  permission: Permission;
+}
+
+/** Aksi cepat difilter berdasarkan izin — staf tidak melihat pintasan yang berujung 403. */
+const QUICK_ACTIONS: readonly QuickAction[] = [
+  { href: '/admin/orders', label: 'Proses Pesanan', description: 'Ubah status order dan verifikasi pembayaran.', permission: 'orders.update' },
+  { href: '/admin/tickets', label: 'Balas Tiket', description: 'Balas tiket pelanggan dan kontak masuk.', permission: 'tickets.reply' },
+  { href: '/admin/incidents', label: 'Status Layanan', description: 'Perbarui status platform, insiden, dan maintenance.', permission: 'status.manage' },
+  { href: '/admin/pricing', label: 'Formula Harga', description: 'Perbarui konstanta harga tier Low.', permission: 'pricing.manage' },
+  { href: '/admin/coupons', label: 'Buat Kupon', description: 'Buat kupon diskon dengan aturan lengkap.', permission: 'coupons.manage' },
+  { href: '/admin/blog', label: 'Tulis Artikel', description: 'Kelola blog dan knowledge base.', permission: 'content.manage' },
+  { href: '/admin/audit-logs', label: 'Periksa Audit Log', description: 'Telusuri siapa mengubah apa dan kapan.', permission: 'audit.read' },
+  { href: '/admin/maintenance', label: 'Mode Maintenance', description: 'Nyalakan halaman pemeliharaan situs.', permission: 'maintenance.manage' },
+];
 
 export default async function AdminOverviewPage() {
+  const { role, can } = await requireAdminPage();
   const db = await getDb();
-  const [stats, orders, openTickets, customers] = await Promise.all([
+  const [stats, orders, openTickets, customers, withExpiry] = await Promise.all([
     db.orders.stats(),
     db.orders.listAdmin({ page: 1, pageSize: 5 }),
     db.tickets.listAdmin({ page: 1, pageSize: 100 }),
     db.users.count(),
+    db.orders.listWithExpiry({ limit: 500 }),
   ]);
 
+  // Pengingat masa aktif: layanan yang segera berakhir / sudah lewat.
+  const now = new Date();
+  const expiry = summarizeExpiry(withExpiry, now);
+  const attentionOrders = withExpiry
+    .filter((order) => ['expiring_soon', 'expired'].includes(serviceState(order, now)))
+    .filter((order) => !['cancelled', 'refunded', 'expired'].includes(order.status))
+    .slice(0, 6);
+
   const openTicketCount = openTickets.items.filter((t) => t.status !== 'closed').length;
+  const actions = QUICK_ACTIONS.filter((action) => can(action.permission));
+  const definition = ROLE_DEFINITIONS[role];
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight text-text-primary">Ringkasan</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-text-primary">Ringkasan</h1>
+          <Badge variant="accent">{ROLE_LABELS[role]}</Badge>
+        </div>
         <p className="mt-1 text-sm text-text-secondary">
-          Angka di bawah dihitung langsung dari data yang tersimpan — tanpa angka palsu.
+          {definition.summary} Angka di bawah dihitung langsung dari data yang tersimpan — tanpa angka palsu.
         </p>
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Total Order" value={String(stats.totalOrders)} icon={<Package className="h-4 w-4" aria-hidden="true" />} />
         <StatCard label="Order Hari Ini" value={String(stats.ordersToday)} hint={`${stats.ordersThisMonth} bulan ini`} />
-        <StatCard label="Pelanggan Terdaftar" value={String(customers)} icon={<Users className="h-4 w-4" aria-hidden="true" />} />
+        {can('customers.read') ? (
+          <StatCard label="Pelanggan Terdaftar" value={String(customers)} icon={<Users className="h-4 w-4" aria-hidden="true" />} />
+        ) : null}
         <StatCard label="Tiket Terbuka" value={String(openTicketCount)} icon={<Ticket className="h-4 w-4" aria-hidden="true" />} />
         <StatCard
-          label="Pendapatan (order non-batal)"
-          value={formatRupiah(stats.revenue)}
-          icon={<CreditCard className="h-4 w-4" aria-hidden="true" />}
-          hint="Total nilai order dengan status selain batal/kedaluwarsa/refund."
+          label="Segera berakhir (≤ 7 hari)"
+          value={String(expiry.expiringSoon)}
+          icon={<CalendarClock className="h-4 w-4" aria-hidden="true" />}
+          hint={`${expiry.expired} layanan sudah lewat masa aktif`}
         />
+        {can('analytics.read') ? (
+          <StatCard
+            label="Pendapatan (order non-batal)"
+            value={formatRupiah(stats.revenue)}
+            icon={<CreditCard className="h-4 w-4" aria-hidden="true" />}
+            hint="Total nilai order dengan status selain batal/kedaluwarsa/refund."
+          />
+        ) : null}
       </div>
+
+      {attentionOrders.length > 0 ? (
+        <section aria-labelledby="pengingat-masa-aktif">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 id="pengingat-masa-aktif" className="text-base font-semibold text-text-primary">
+              Perlu Perhatian — Masa Aktif Layanan
+            </h2>
+            <Link
+              href="/admin/orders"
+              className="inline-flex items-center gap-1 text-sm font-medium text-text-primary underline underline-offset-4"
+            >
+              Kelola masa aktif <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+            {attentionOrders.map((order) => {
+              const state = serviceState(order, now);
+              return (
+                <li key={order.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs font-medium text-text-primary">{order.id}</p>
+                    <p className="mt-0.5 truncate text-xs text-text-muted">
+                      {order.serverName} · {order.customerEmail}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="text-xs text-text-muted">{remainingLabel(order.expiresAt, now)}</span>
+                    <Badge variant={state === 'expired' ? 'error' : 'warning'}>
+                      {SERVICE_STATE_LABELS[state]}
+                    </Badge>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2 text-xs leading-relaxed text-text-muted">
+            Pengingat H-7, H-3, H-1, dan hari kedaluwarsa dikirim otomatis ke pelanggan (notifikasi dashboard +
+            email). Status order tidak diubah otomatis — perpanjangan diputuskan tim WangStore.
+          </p>
+        </section>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="order-terbaru">
@@ -62,7 +151,7 @@ export default async function AdminOverviewPage() {
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-medium text-text-primary">{order.id}</p>
                     <p className="mt-0.5 truncate text-xs text-text-muted">
-                      {order.customerName} · {TIER_LABELS[order.tier]}{' '}
+                      {order.customerName} · {orderCatalogLabel(order)}{' '}
                       {order.packageId ? `· ${order.packageId}` : `· ${order.cpu}C/${order.ramGb}G`} ·{' '}
                       {formatDate(order.createdAt)}
                     </p>
@@ -79,17 +168,10 @@ export default async function AdminOverviewPage() {
 
         <section aria-labelledby="panduan">
           <h2 id="panduan" className="mb-3 text-base font-semibold text-text-primary">
-            Aksi Cepat
+            Aksi Cepat untuk Peran Anda
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {[
-              { href: '/admin/orders', label: 'Proses Pesanan', description: 'Ubah status order dan verifikasi pembayaran.' },
-              { href: '/admin/tickets', label: 'Balas Tiket', description: 'Balas tiket pelanggan dan kontak masuk.' },
-              { href: '/admin/pricing', label: 'Formula Harga', description: 'Perbarui konstanta harga tier Low.' },
-              { href: '/admin/coupons', label: 'Buat Kupon', description: 'Buat kupon diskon dengan aturan lengkap.' },
-              { href: '/admin/infrastructure', label: 'Status Layanan', description: 'Atur status platform, layanan, dan lokasi.' },
-              { href: '/admin/blog', label: 'Tulis Artikel', description: 'Kelola blog dan knowledge base.' },
-            ].map((action) => (
+            {actions.map((action) => (
               <Link
                 key={action.href}
                 href={action.href}
@@ -100,10 +182,19 @@ export default async function AdminOverviewPage() {
               </Link>
             ))}
           </div>
-          <p className="mt-4 rounded-lg border border-border bg-surface-muted p-4 text-xs leading-relaxed text-text-muted">
-            Setiap tindakan di panel admin dicatat dalam Audit Log dan diverifikasi ulang di sisi server
-            (RBAC). Harga order tidak pernah dapat diubah — hanya statusnya.
-          </p>
+          <div className="mt-4 space-y-2 rounded-lg border border-border bg-surface-muted p-4 text-xs leading-relaxed text-text-muted">
+            <p>
+              Di luar wewenang {ROLE_LABELS[role]}: {definition.cannot.join('; ')}.{' '}
+              <Link href="/admin/roles" className="font-medium text-text-primary underline underline-offset-4">
+                Lihat matriks peran &amp; izin
+              </Link>
+              .
+            </p>
+            <p>
+              Setiap tindakan di panel admin dicatat dalam Audit Log dan diverifikasi ulang di sisi server
+              (RBAC). Harga order tidak pernah dapat diubah — hanya statusnya.
+            </p>
+          </div>
         </section>
       </div>
     </div>

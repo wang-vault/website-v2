@@ -1,7 +1,9 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { getDb } from '@/lib/db';
 import { StatusManager } from '@/components/admin/status-manager';
 
 export default async function AdminIncidentsPage() {
+  await requireAdminPage('status.manage');
   const db = await getDb();
   const settings = await db.settings.get();
   return (

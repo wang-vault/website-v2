@@ -18,6 +18,7 @@ const LEGAL_LINKS = [
 
 const PRODUCT_LINKS = [
   { href: '/server-builder', label: 'Server Builder' },
+  { href: '/vps', label: 'Paket VPS' },
   { href: '/features', label: 'Fitur' },
   { href: '/infrastructure', label: 'Infrastruktur' },
   { href: '/status', label: 'Status Layanan' },

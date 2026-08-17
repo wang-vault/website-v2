@@ -19,6 +19,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/about',
     '/infrastructure',
     '/server-builder',
+    '/vps',
     '/features',
     '/why-wangstore',
     '/faq',

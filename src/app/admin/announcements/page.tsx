@@ -1,3 +1,4 @@
+import { requireAdminPage } from '@/lib/auth/page-guards';
 import { CmsManager, type CmsManagerConfig } from '@/components/admin/cms-manager';
 
 const ANNOUNCEMENTS_CONFIG: CmsManagerConfig = {
@@ -21,7 +22,9 @@ const ANNOUNCEMENTS_CONFIG: CmsManagerConfig = {
   ],
 };
 
-export default function AdminAnnouncementsPage() {
+export default async function AdminAnnouncementsPage() {
+  const { can } = await requireAdminPage('content.read');
+
   return (
     <div className="space-y-6">
       <header>
@@ -30,7 +33,7 @@ export default function AdminAnnouncementsPage() {
           Pengumuman ditampilkan sebagai banner di bagian atas situs.
         </p>
       </header>
-      <CmsManager config={ANNOUNCEMENTS_CONFIG} />
+      <CmsManager config={ANNOUNCEMENTS_CONFIG} readOnly={!can('content.manage')} />
     </div>
   );
 }
