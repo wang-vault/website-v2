@@ -46,7 +46,11 @@ export async function PATCH(
         throw new ApiErrorException(403, 'FORBIDDEN', 'Role owner tidak dapat diturunkan.');
       }
       if (target.role !== 'owner' && newRole === 'owner') {
-        throw new ApiErrorException(403, 'FORBIDDEN', 'Hanya owner yang dapat menetapkan role owner.');
+        throw new ApiErrorException(
+          403,
+          'FORBIDDEN',
+          'Role owner tidak dapat ditetapkan lewat panel — akun Owner dibuat lewat npm run db:seed.',
+        );
       }
       await db.users.update(id, { role: newRole });
       await db.audit.log({

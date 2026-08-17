@@ -211,10 +211,25 @@ export class JsonDataStore implements DataStore {
 
   /** Penulisan atomik: tulis file sementara lalu rename. */
   private async persist(): Promise<void> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    const tmpPath = `${this.filePath}.tmp`;
-    await fs.writeFile(tmpPath, JSON.stringify(this.data, null, 2), 'utf8');
-    await fs.rename(tmpPath, this.filePath);
+    try {
+      await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+      const tmpPath = `${this.filePath}.tmp`;
+      await fs.writeFile(tmpPath, JSON.stringify(this.data, null, 2), 'utf8');
+      await fs.rename(tmpPath, this.filePath);
+    } catch (error) {
+      // Filesystem read-only (khas Vercel/Cloudflare serverless) menghasilkan
+      // EACCES/EROFS — jelaskan akar masalahnya alih-alih error mentah.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EACCES' || code === 'EROFS' || code === 'EPERM') {
+        throw new Error(
+          'JSON datastore tidak dapat menulis file — filesystem read-only (khas Vercel/Cloudflare serverless). ' +
+            'Production memerlukan Supabase PostgreSQL. Konfigurasikan NEXT_PUBLIC_SUPABASE_URL dan ' +
+            'SUPABASE_SERVICE_ROLE_KEY, jalankan database/schema.sql, lalu npm run db:seed — lihat docs/DEPLOYMENT.md.',
+          { cause: error },
+        );
+      }
+      throw error;
+    }
   }
 
   // ───────────────────────────────────────────── users & profiles

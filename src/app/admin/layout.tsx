@@ -5,7 +5,8 @@ import { ShieldCheck } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { AdminNav } from '@/components/admin/admin-nav';
 import { LogoutButton } from '@/components/auth/logout-button';
-import { getSession, isStaff } from '@/lib/auth/session';
+import { getValidatedSessionContext } from '@/lib/auth/page-guards';
+import { isStaff } from '@/lib/auth/session';
 import { Badge } from '@/components/ui/badge';
 import { navGroupsForRole } from '@/lib/admin/nav';
 import { ROLE_DEFINITIONS } from '@/lib/auth/rbac';
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const sessionContext = await getSession();
+  const sessionContext = await getValidatedSessionContext();
   if (!sessionContext) redirect('/login?next=/admin');
   const role = sessionContext.session.role;
   if (!isStaff(role)) redirect('/dashboard');

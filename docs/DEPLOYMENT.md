@@ -119,6 +119,55 @@ lebih dari sekali per hari aman. Admin juga dapat menjalankannya manual dari Pan
 
 Saat ini tidak ada fitur upload. Jika ditambahkan: gunakan Supabase Storage / object storage (bukan `/public/uploads`), dengan validasi MIME, extension, size, filename, dan authorization.
 
+## 11. Troubleshooting — HTTP 500 setelah deploy
+
+Gejala paling umum: build berhasil, tetapi seluruh halaman (termasuk `/`, `/login`, dan panel admin) mengembalikan **500 Internal Server Error**.
+
+### 11.1 Cek cepat dari browser
+
+Buka `https://DOMAIN/api/status`:
+
+- `system.ok: true` → datastore sehat; lihat log Vercel (Functions → Logs) untuk error spesifik halaman.
+- `system.ok: false` dengan `datastore: "unavailable"` → datastore belum siap (lihat 11.2).
+
+### 11.2 Datastore belum siap (penyebab paling umum)
+
+Di production aplikasi **wajib** memakai Supabase. Jika `NEXT_PUBLIC_SUPABASE_URL` dan
+`SUPABASE_SERVICE_ROLE_KEY` belum diisi di environment Vercel (Production), aplikasi mencoba fallback
+JSON datastore yang menulis `data/wangstore.json` — di Vercel filesystem bersifat **read-only**,
+sehingga seluruh halaman gagal dengan error seperti:
+
+```
+EACCES: permission denied, open '/var/task/data/wangstore.json.tmp'
+```
+
+Mulai v1.0.1 error ini dilaporkan dengan pesan yang jelas di log server, dan audit konfigurasi
+production dicetak sekali di awal log. Perbaikan:
+
+1. Buat project Supabase dan jalankan **seluruh isi** `database/schema.sql` lewat SQL Editor.
+2. Isi `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` di Vercel → Settings → Environment Variables (Production **dan** Preview), lalu **redeploy**.
+3. Jalankan seed Owner: `ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run db:seed`.
+4. Isi juga `JWT_SECRET` dan `NEXT_PUBLIC_APP_URL`.
+
+### 11.3 Supabase terisi tetapi tetap 500
+
+- **Skema belum dijalankan** — log memuat `Supabase … : relation "settings" does not exist` atau
+  `ping ke tabel settings gagal`. Jalankan `database/schema.sql` lewat SQL Editor, lalu redeploy.
+- **Tabel settings belum di-seed** — log memuat `Tabel settings belum di-seed`. Jalankan `npm run db:seed`.
+- **Key tertukar** — pastikan memakai **service_role** key (bukan anon key) untuk `SUPABASE_SERVICE_ROLE_KEY`.
+- **IP/network** — Supabase free tier tidak membatasi IP secara default; bila project di-pause, buka dashboard Supabase dan restore.
+
+### 11.4 Login / register gagal setelah datastore beres
+
+- **JWT_SECRET belum diisi** — login mengembalikan 500 dan log memuat `JWT_SECRET belum dikonfigurasi`. Isi dengan `openssl rand -base64 48` lalu redeploy.
+- **Verifikasi email tidak sampai** — set `EMAIL_PROVIDER=resend` + `RESEND_API_KEY`; dengan `EMAIL_PROVIDER=console`, tautan verifikasi hanya dicetak ke log dan pengguna baru tidak dapat login.
+- **Kupon/order 401/403** — pastikan `NEXT_PUBLIC_APP_URL` menunjuk domain final (Origin/Host validation) dan cookie `ws_csrf` terkirim (klien mengirim header `x-csrf-token`).
+
+### 11.5 Preview deployment juga 500
+
+Environment Preview Vercel memakai `NODE_ENV=production` dan filesystem read-only — isi environment
+variables untuk Preview juga (bukan hanya Production), atau biarkan preview memakai datastore yang sama.
+
 ## 11. Deployment Checklist
 
 - [ ] Repository GitHub dibuat
