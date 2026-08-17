@@ -150,6 +150,10 @@ export interface OrderRepository {
   listWithExpiry(input?: { limit?: number }): Promise<OrderRecord[]>;
   /** Menandai satu tahap pengingat sebagai terkirim (idempoten). */
   markReminderSent(id: string, stage: number, sentAt: string): Promise<OrderRecord | null>;
+  /** Order perpanjangan yang menunjuk ke order induk tertentu. */
+  listRenewals(parentOrderId: string): Promise<OrderRecord[]>;
+  /** Menandai order perpanjangan sudah diterapkan ke masa aktif induk. */
+  markRenewalApplied(id: string, appliedAt: string): Promise<OrderRecord | null>;
   stats(): Promise<OrderStats>;
 }
 

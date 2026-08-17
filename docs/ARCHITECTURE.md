@@ -137,6 +137,31 @@ Ketersediaan tiap katalog disimpan pada `settings.catalogStatus` (`available` | 
 dibaca lewat `src/lib/catalog/`. Order service dan endpoint estimasi memverifikasi status ini sebelum
 menghitung harga, sehingga membuka/menutup penjualan cukup dilakukan Admin dari panel tanpa deploy ulang.
 
+## 8c. Masa Aktif & Pengingat
+
+`orders.activatedAt` dan `orders.expiresAt` ditetapkan admin (aktivasi layanan terjadi di luar aplikasi).
+`src/lib/reminders/` berisi logika murni (keadaan layanan, sisa hari, tahap pengingat) yang diuji unit,
+sedangkan `src/lib/reminders/service.ts` melakukan I/O: notifikasi dashboard, email, penandaan tahap terkirim
+(`remindersSent`), dan audit log.
+
+Penjadwalan memakai scheduler platform (`vercel.json` → `/api/cron/reminders`, harian). Endpoint memeriksa
+`CRON_SECRET` secara konstan-waktu dan **fail closed** bila secret belum dikonfigurasi. Tidak ada proses
+long-running. Admin dapat memicu putaran yang sama lewat `POST /api/admin/reminders`.
+
+Aplikasi tidak mengubah status order otomatis saat masa aktif habis — pengingat hanya memberi tahu.
+
+## 8d. Perpanjangan Layanan
+
+Perpanjangan dimodelkan sebagai **order baru** yang menunjuk order induk lewat `orders.renewalOfOrderId`, bukan
+mutasi order lama: riwayat pembayaran tetap utuh, harga tiap periode terekam apa adanya, audit trail jelas.
+
+- `src/lib/renewals/` — logika murni: kelayakan (`evaluateRenewal`), masa berlaku baru (`nextExpiry`, aman
+  terhadap akhir bulan), deteksi perpanjangan berjalan.
+- `src/lib/renewals/service.ts` — I/O: harga dari katalog saat ini, pembuatan order perpanjangan, penerapan ke
+  masa aktif induk (`applyRenewal`, idempoten lewat `renewalAppliedAt`).
+- `packages.renewable` & `vps_packages.renewable` — penanda paket tanpa perpanjangan.
+- Penerapan terjadi saat status order perpanjangan menjadi `paid`/`completed`; siklus pengingat lalu direset.
+
 ## 9. Generic CMS
 
 `src/lib/cms/` mendefinisikan resource map (`blog`, `blogCategories`, `knowledgeBase`, `faq`, `testimonials`, `pages`, `legal`, `announcements`, `incidents`, `maintenanceWindows`) dengan per resource: collection, identity field, allowed fields, skema Zod, serta `readPermission` dan `writePermission` terpisah. Dua route (`/api/admin/cms/[resource]` dan `/api/admin/cms/[resource]/[id]`) melayani seluruh modul — tidak ada 20 endpoint duplikat. UI admin memakai satu `CmsManager` yang digerakkan konfigurasi.

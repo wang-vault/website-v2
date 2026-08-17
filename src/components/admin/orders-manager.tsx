@@ -282,6 +282,13 @@ export function OrdersManager() {
                         {order.id}
                       </Link>
                       <p className="mt-0.5 text-xs text-text-muted">{formatDate(order.createdAt)}</p>
+                      {order.renewalOfOrderId ? (
+                        <p className="mt-1 text-xs">
+                          <Badge variant={order.renewalAppliedAt ? 'success' : 'info'}>
+                            {order.renewalAppliedAt ? 'Perpanjangan diterapkan' : 'Perpanjangan'}
+                          </Badge>
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-xs font-medium text-text-primary">{order.customerName}</p>
@@ -357,6 +364,22 @@ export function OrdersManager() {
                         <p className="mt-2 text-xs text-text-muted">
                           Terakhir diperbarui {formatDateTime(order.updatedAt)}. Harga order tidak dapat diubah — hanya status.
                         </p>
+
+                        {order.renewalOfOrderId ? (
+                          <p className="mt-3 rounded-md border border-border bg-background p-3 text-xs leading-relaxed text-text-secondary">
+                            Order ini memperpanjang layanan pada order{' '}
+                            <Link
+                              href={`/order/${order.renewalOfOrderId}`}
+                              className="font-mono underline underline-offset-2"
+                            >
+                              {order.renewalOfOrderId}
+                            </Link>
+                            .{' '}
+                            {order.renewalAppliedAt
+                              ? `Masa aktif induk sudah diperpanjang pada ${formatDateTime(order.renewalAppliedAt)}.`
+                              : 'Menandai order ini “Lunas” atau “Selesai” akan otomatis memundurkan tanggal kedaluwarsa layanan induk satu bulan.'}
+                          </p>
+                        ) : null}
 
                         <div className="mt-4 border-t border-border pt-3">
                           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">

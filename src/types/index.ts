@@ -96,6 +96,12 @@ export interface PackageRecord {
   storageGb: number;
   price: number;
   popular: boolean;
+  /**
+   * Layanan pada paket ini dapat diperpanjang pelanggan. Paket promo atau
+   * paket yang dihentikan dapat ditandai false — pelanggan diberi tahu jujur
+   * bahwa perpanjangan tidak tersedia, bukan dibiarkan memesan lalu ditolak.
+   */
+  renewable: boolean;
   active: boolean;
   sortOrder: number;
   createdAt: string;
@@ -116,6 +122,8 @@ export interface VpsPackageRecord {
   storageGb: number;
   /** Kuota transfer data per bulan (TB). 0 = tidak dibatasi/tidak dicantumkan. */
   bandwidthTb: number;
+  /** Paket VPS ini dapat diperpanjang pelanggan setelah masa aktif berjalan. */
+  renewable: boolean;
   /** Sistem operasi yang tersedia, mis. Ubuntu 24.04, Debian 12. */
   operatingSystems: string[];
   /** Lokasi datacenter yang ditawarkan untuk paket ini. */
@@ -205,6 +213,16 @@ export interface OrderRecord {
   remindersSent: number[];
   /** Waktu pengingat terakhir dikirim — untuk transparansi di panel. */
   lastReminderAt: string | null;
+  /**
+   * Order induk bila order ini adalah PERPANJANGAN layanan. null = order baru.
+   * Harga perpanjangan dihitung ulang dari katalog saat perpanjangan dibuat.
+   */
+  renewalOfOrderId: string | null;
+  /**
+   * Waktu perpanjangan ini diterapkan ke masa aktif order induk. Menjaga
+   * agar satu order perpanjangan tidak pernah menambah masa aktif dua kali.
+   */
+  renewalAppliedAt: string | null;
   /** Hash SHA-256 dari token akses untuk halaman konfirmasi (guest). */
   accessTokenHash: string | null;
   createdAt: string;

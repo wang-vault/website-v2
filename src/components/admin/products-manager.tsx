@@ -47,6 +47,7 @@ interface PackageForm {
   id: string;
   label: string;
   tier: 'medium' | 'high';
+  renewable: boolean;
   cpu: string;
   ramGb: string;
   storageGb: string;
@@ -60,6 +61,7 @@ const EMPTY_PACKAGE: PackageForm = {
   id: '',
   label: '',
   tier: 'high',
+  renewable: true,
   cpu: '4',
   ramGb: '8',
   storageGb: '50',
@@ -348,7 +350,10 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
                 </td>
                 <td className="px-4 py-3 font-mono text-xs font-semibold">{formatRupiah(pkg.price)}/bulan</td>
                 <td className="px-4 py-3">
-                  <Badge variant={pkg.active ? 'success' : 'neutral'}>{pkg.active ? 'Aktif' : 'Nonaktif'}</Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={pkg.active ? 'success' : 'neutral'}>{pkg.active ? 'Aktif' : 'Nonaktif'}</Badge>
+                    {pkg.renewable ? null : <Badge variant="warning">Tanpa perpanjangan</Badge>}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
@@ -361,6 +366,7 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
                           id: pkg.id,
                           label: pkg.label,
                           tier: pkg.tier === 'medium' ? 'medium' : 'high',
+                          renewable: pkg.renewable,
                           cpu: String(pkg.cpu),
                           ramGb: String(pkg.ramGb),
                           storageGb: String(pkg.storageGb),
@@ -570,6 +576,11 @@ export function ProductsManager({ readOnly = false }: { readOnly?: boolean }) {
               checked={packageForm.popular}
               onChange={(e) => setPackageForm((c) => ({ ...c, popular: e.target.checked }))}
               label="Tandai Populer"
+            />
+            <Checkbox
+              checked={packageForm.renewable}
+              onChange={(e) => setPackageForm((c) => ({ ...c, renewable: e.target.checked }))}
+              label="Dapat diperpanjang pelanggan"
             />
             <Checkbox
               checked={packageForm.active}

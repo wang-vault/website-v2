@@ -9,6 +9,21 @@ dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 ### Ditambahkan
 
+- **Perpanjangan layanan** — tombol *Perpanjang 1 Bulan* di halaman order membuat **order perpanjangan baru**
+  yang tertaut ke order induk (`orders.renewalOfOrderId`), harga dihitung ulang dari katalog saat itu.
+- **Penerapan otomatis** — saat admin menandai order perpanjangan *Lunas*/*Selesai*, masa aktif induk mundur
+  satu bulan dari tanggal kedaluwarsa lama (sisa hari tidak hangus; dari sekarang bila sudah lewat), siklus
+  pengingat direset, dan pelanggan mendapat notifikasi. Idempoten lewat `orders.renewalAppliedAt`.
+- **Penanda paket dapat/tidak dapat diperpanjang** (`packages.renewable`, `vps_packages.renewable`) — berlaku
+  untuk paket VPS maupun Minecraft. Halaman `/vps` menampilkan label jujur sebelum pembelian dan server menolak
+  perpanjangan paket tersebut (409).
+- **`GET/POST /api/orders/[id]/renew`** — status kelayakan dan pembuatan order perpanjangan, dengan verifikasi
+  ulang server-side, rate limit order, CSRF, dan Turnstile.
+- **Modul `src/lib/renewals/`** — logika murni kelayakan & perhitungan masa berlaku (aman terhadap akhir bulan),
+  19 unit test baru.
+- Panel admin menandai order perpanjangan beserta status penerapannya, dan menyediakan sakelar
+  *Dapat diperpanjang* pada form paket Minecraft maupun VPS.
+
 - **Masa aktif layanan pada order** — kolom `activatedAt` (waktu aktif, ditetapkan admin) dan `expiresAt`
   (waktu kedaluwarsa), dapat diatur di Panel Admin → Pesanan → *Kelola*. Validasi menolak tanggal kedaluwarsa
   yang lebih awal dari tanggal aktif.

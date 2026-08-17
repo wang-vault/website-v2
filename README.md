@@ -20,6 +20,8 @@ WangStore **bukan** infrastructure hosting dan **bukan** Minecraft control panel
 - [Autentikasi](#autentikasi)
 - [API](#api)
 - [Keamanan](#keamanan)
+- [Masa Aktif & Pengingat Layanan](#masa-aktif--pengingat-layanan)
+- [Perpanjangan Layanan](#perpanjangan-layanan)
 - [Katalog & Ketersediaan Layanan](#katalog--ketersediaan-layanan)
 - [Pricing & Server Builder](#pricing--server-builder)
 - [Alur Order](#alur-order)
@@ -231,6 +233,51 @@ Cara kerjanya:
   merender formulir dalam mode nonaktif.
 - Setiap API route tetap memverifikasi izin sendiri — UI hanya kenyamanan, bukan pengaman.
 
+## Masa Aktif & Pengingat Layanan
+
+Setiap order dapat memiliki **masa aktif layanan** yang ditetapkan admin (Panel Admin → Pesanan → *Kelola*):
+
+| Field | Arti |
+| --- | --- |
+| **Aktif sejak** (`activatedAt`) | Waktu layanan mulai berjalan — diisi admin setelah layanan disiapkan. |
+| **Berlaku sampai** (`expiresAt`) | Akhir masa berlaku. Kosong = belum ditentukan. |
+
+**Pengingat otomatis** dikirim pada **H-7, H-3, H-1, dan hari kedaluwarsa** lewat notifikasi dashboard dan
+email. Sifatnya idempoten (tahap tercatat di `remindersSent`), tidak menumpuk bila scheduler sempat mati, dan
+direset saat masa aktif diperpanjang. **Status order tidak diubah otomatis** saat masa aktif habis — admin yang
+memutuskan.
+
+Penjadwalan memakai scheduler platform: `vercel.json` memuat cron harian ke `/api/cron/reminders`, dan endpoint
+tersebut **menolak semua permintaan bila `CRON_SECRET` belum diisi**. Admin juga dapat menekan **Jalankan
+Pengingat** di halaman Pesanan.
+
+## Perpanjangan Layanan
+
+Pelanggan memperpanjang layanan dari halaman order (`/order/[id]`) dengan tombol **Perpanjang 1 Bulan**:
+
+1. Sistem membuat **order perpanjangan baru** yang tertaut ke order induk (`renewalOfOrderId`).
+2. Harga dihitung ulang dari **katalog saat ini** — harga lama tidak disalin, nilai dari browser diabaikan.
+3. Order dikonfirmasi seperti pembelian biasa (WhatsApp / instruksi pembayaran).
+4. Saat admin menandai order perpanjangan **Lunas** atau **Selesai**, masa aktif induk otomatis mundur satu
+   bulan **dari tanggal kedaluwarsa lama** — sisa hari tidak hangus (dari sekarang bila sudah lewat). Siklus
+   pengingat direset otomatis.
+
+Perpanjangan **idempoten**: satu order perpanjangan hanya menambah masa aktif satu kali (`renewalAppliedAt`),
+dan hanya boleh ada satu perpanjangan berjalan per layanan.
+
+### Paket yang tidak dapat diperpanjang
+
+Paket Minecraft (Medium/High) dan paket VPS punya penanda **Dapat diperpanjang**. Untuk paket promo atau paket
+yang dihentikan, matikan penanda itu di Panel Admin → Produk, Paket & VPS. Efeknya:
+
+- Kartu paket di `/vps` menampilkan label **"Tanpa perpanjangan — layanan berhenti di akhir masa aktif"**
+  sebelum pelanggan membeli.
+- Halaman order menjelaskan alasannya, dan **server menolak** permintaan perpanjangan (409) walaupun tombol
+  dipaksa.
+
+Perpanjangan juga ditolak bila: masa aktif belum ditetapkan, paket sudah tidak ada di katalog, layanan sedang
+tidak dijual, order dibatalkan/direfund, atau sudah ada perpanjangan berjalan.
+
 ## Katalog & Ketersediaan Layanan
 
 Katalog yang dijual terdiri dari tiga tier Minecraft (Low/Medium/High) dan VPS. **Ketersediaan setiap layanan
@@ -289,9 +336,9 @@ Seluruh konten website dikelola dari admin tanpa menyentuh kode: Homepage, About
 ```bash
 npm run typecheck   # 0 error TypeScript
 npm run lint        # 0 error, 0 warning
-npm run test        # unit test pricing engine + matriks RBAC (Vitest)
+npm run test        # unit test pricing, RBAC, katalog, pengingat & perpanjangan (Vitest)
 npm run build       # production build
-npm run smoke       # HTTP smoke test (93 acceptance check)
+npm run smoke       # HTTP smoke test (126 acceptance check)
 ```
 
 `npm run ci` menjalankan semuanya. Smoke test mencakup: harga paket High tepat, minimum Low 45.000, normalisasi 20/64/900 → 16/32/160, Medium → 409, paket palsu → 422, halaman publik → 200, `/dashboard` → `/login`, admin salah/benar + RBAC, pemisahan wewenang Staff vs Admin vs Owner (staff dapat operasional & baca-saja, ditolak untuk harga/CMS/branding/audit/analitik; admin ditolak untuk mode maintenance), CSRF lintas origin ditolak, kupon valid/kedaluwarsa/limit/diskon client diabaikan.

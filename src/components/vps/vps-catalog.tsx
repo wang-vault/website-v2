@@ -248,6 +248,11 @@ export function VpsCatalog({
                     </li>
                   ) : null}
                 </ul>
+                {pkg.renewable ? null : (
+                  <p className="mt-3 inline-flex rounded-md border border-warning/30 bg-warning/5 px-2 py-1 text-xs text-warning">
+                    Tanpa perpanjangan — layanan berhenti di akhir masa aktif
+                  </p>
+                )}
                 {pkg.operatingSystems.length > 0 ? (
                   <p className="mt-3 text-xs text-text-muted">OS: {pkg.operatingSystems.join(', ')}</p>
                 ) : null}
@@ -348,6 +353,12 @@ export function VpsCatalog({
                   <dt className="text-text-secondary">Spesifikasi</dt>
                   <dd className="text-right font-mono text-xs text-text-primary">
                     {selected ? `${selected.vcpu} vCPU / ${selected.ramGb} GB / ${selected.storageGb} GB` : '—'}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-text-secondary">Perpanjangan</dt>
+                  <dd className="text-right text-xs text-text-primary">
+                    {selected ? (selected.renewable ? 'Dapat diperpanjang' : 'Tidak tersedia') : '—'}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t border-border pt-2">

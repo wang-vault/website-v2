@@ -114,7 +114,19 @@ function normalizeCollections(parsed: Partial<JsonCollections>): JsonCollections
       expiresAt: order.expiresAt ?? null,
       remindersSent: Array.isArray(order.remindersSent) ? order.remindersSent : [],
       lastReminderAt: order.lastReminderAt ?? null,
+      renewalOfOrderId: order.renewalOfOrderId ?? null,
+      renewalAppliedAt: order.renewalAppliedAt ?? null,
     }));
+  }
+  if (Array.isArray(collections.packages)) {
+    collections.packages = collections.packages.map((pkg: PackageRecord) =>
+      pkg.renewable === undefined ? { ...pkg, renewable: true } : pkg,
+    );
+  }
+  if (Array.isArray(collections.vpsPackages)) {
+    collections.vpsPackages = collections.vpsPackages.map((pkg: VpsPackageRecord) =>
+      pkg.renewable === undefined ? { ...pkg, renewable: true } : pkg,
+    );
   }
   if (Array.isArray(collections.products)) {
     collections.products = collections.products.map((product: ProductRecord) =>
@@ -477,6 +489,20 @@ export class JsonDataStore implements DataStore {
         .filter((o) => Boolean(o.expiresAt))
         .sort((a, b) => String(a.expiresAt).localeCompare(String(b.expiresAt)))
         .slice(0, limit);
+    },
+    listRenewals: async (parentOrderId: string) =>
+      this.data.orders
+        .filter((o) => o.renewalOfOrderId === parentOrderId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    markRenewalApplied: async (id: string, appliedAt: string) => {
+      const record = this.data.orders.find((o) => o.id === id);
+      if (!record) return null;
+      const updated: OrderRecord = { ...record, renewalAppliedAt: appliedAt, updatedAt: toIso() };
+      await this.mutate((c) => {
+        const index = c.orders.findIndex((o) => o.id === id);
+        if (index >= 0) c.orders[index] = updated;
+      });
+      return updated;
     },
     markReminderSent: async (id: string, stage: number, sentAt: string) => {
       const record = this.data.orders.find((o) => o.id === id);

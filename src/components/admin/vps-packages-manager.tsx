@@ -35,6 +35,7 @@ interface VpsForm {
   locations: string;
   price: string;
   popular: boolean;
+  renewable: boolean;
   active: boolean;
   sortOrder: string;
 }
@@ -51,6 +52,7 @@ const EMPTY_FORM: VpsForm = {
   locations: '',
   price: '175000',
   popular: false,
+  renewable: true,
   active: true,
   sortOrder: '0',
 };
@@ -108,6 +110,7 @@ export function VpsPackagesManager({ readOnly = false }: { readOnly?: boolean })
       locations: pkg.locations.join(', '),
       price: String(pkg.price),
       popular: pkg.popular,
+      renewable: pkg.renewable,
       active: pkg.active,
       sortOrder: String(pkg.sortOrder),
     });
@@ -130,6 +133,7 @@ export function VpsPackagesManager({ readOnly = false }: { readOnly?: boolean })
         locations: toList(form.locations),
         price: Number(form.price) || 0,
         popular: form.popular,
+        renewable: form.renewable,
         active: form.active,
         sortOrder: Number(form.sortOrder) || 0,
       };
@@ -208,6 +212,7 @@ export function VpsPackagesManager({ readOnly = false }: { readOnly?: boolean })
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Spesifikasi</th>
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Transfer</th>
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Harga</th>
+                <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Perpanjangan</th>
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Status</th>
                 <th scope="col" className="px-4 py-2.5 font-medium text-text-secondary">Aksi</th>
               </tr>
@@ -227,6 +232,11 @@ export function VpsPackagesManager({ readOnly = false }: { readOnly?: boolean })
                     {pkg.bandwidthTb > 0 ? `${pkg.bandwidthTb} TB/bln` : '—'}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{formatRupiah(pkg.price)}/bulan</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={pkg.renewable ? 'success' : 'warning'}>
+                      {pkg.renewable ? 'Bisa diperpanjang' : 'Tidak bisa'}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3">
                     <Badge variant={pkg.active ? 'success' : 'neutral'}>{pkg.active ? 'Aktif' : 'Nonaktif'}</Badge>
                   </td>
@@ -256,7 +266,9 @@ export function VpsPackagesManager({ readOnly = false }: { readOnly?: boolean })
 
       <p className="text-xs leading-relaxed text-text-muted">
         Paket aktif langsung tampil di halaman publik <span className="font-mono">/vps</span>. Harga final
-        dihitung ulang server-side saat order dibuat — nilai dari browser tidak pernah dipercaya.
+        dihitung ulang server-side saat order dibuat — nilai dari browser tidak pernah dipercaya. Paket yang
+        ditandai <strong>tidak dapat diperpanjang</strong> tetap dapat dibeli, tetapi pelanggan diberi tahu di
+        halaman order bahwa perpanjangan tidak tersedia.
       </p>
 
       <Modal
@@ -333,6 +345,11 @@ export function VpsPackagesManager({ readOnly = false }: { readOnly?: boolean })
               checked={form.popular}
               onChange={(e) => setForm((c) => ({ ...c, popular: e.target.checked }))}
               label="Tandai Populer"
+            />
+            <Checkbox
+              checked={form.renewable}
+              onChange={(e) => setForm((c) => ({ ...c, renewable: e.target.checked }))}
+              label="Dapat diperpanjang pelanggan"
             />
             <Checkbox
               checked={form.active}

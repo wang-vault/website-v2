@@ -25,6 +25,8 @@ const vpsPackageSchema = z.object({
   locations: z.array(z.string().trim().min(2).max(80)).max(20).default([]),
   price: z.number().int().min(0).max(1_000_000_000),
   popular: z.boolean().default(false),
+  /** Paket VPS ini dapat diperpanjang pelanggan. */
+  renewable: z.boolean().default(true),
   active: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
 });

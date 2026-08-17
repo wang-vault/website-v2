@@ -172,6 +172,7 @@ function packages(): PackageRecord[] {
     storageGb: pkg.storageGb,
     price: pkg.price,
     popular: pkg.popular,
+    renewable: true,
     active: true,
     sortOrder: pkg.sortOrder,
     createdAt: toIso(),
@@ -185,10 +186,10 @@ function packages(): PackageRecord[] {
  * di Panel Admin → Produk & Paket. Ditempatkan di antara Low (custom) dan High.
  */
 const MEDIUM_PACKAGES: Array<Omit<PackageRecord, 'createdAt' | 'updatedAt'>> = [
-  { id: 'medium-2c4g', label: 'Medium 2C/4G', tier: 'medium', cpu: 2, ramGb: 4, storageGb: 30, price: 150_000, popular: false, active: true, sortOrder: 1 },
-  { id: 'medium-4c8g', label: 'Medium 4C/8G', tier: 'medium', cpu: 4, ramGb: 8, storageGb: 50, price: 285_000, popular: true, active: true, sortOrder: 2 },
-  { id: 'medium-6c12g', label: 'Medium 6C/12G', tier: 'medium', cpu: 6, ramGb: 12, storageGb: 70, price: 415_000, popular: false, active: true, sortOrder: 3 },
-  { id: 'medium-8c16g', label: 'Medium 8C/16G', tier: 'medium', cpu: 8, ramGb: 16, storageGb: 90, price: 540_000, popular: false, active: true, sortOrder: 4 },
+  { id: 'medium-2c4g', label: 'Medium 2C/4G', tier: 'medium', cpu: 2, ramGb: 4, storageGb: 30, price: 150_000, popular: false, renewable: true, active: true, sortOrder: 1 },
+  { id: 'medium-4c8g', label: 'Medium 4C/8G', tier: 'medium', cpu: 4, ramGb: 8, storageGb: 50, price: 285_000, popular: true, renewable: true, active: true, sortOrder: 2 },
+  { id: 'medium-6c12g', label: 'Medium 6C/12G', tier: 'medium', cpu: 6, ramGb: 12, storageGb: 70, price: 415_000, popular: false, renewable: true, active: true, sortOrder: 3 },
+  { id: 'medium-8c16g', label: 'Medium 8C/16G', tier: 'medium', cpu: 8, ramGb: 16, storageGb: 90, price: 540_000, popular: false, renewable: true, active: true, sortOrder: 4 },
 ];
 
 /**
@@ -205,6 +206,7 @@ const VPS_PACKAGES: Array<Omit<VpsPackageRecord, 'createdAt' | 'updatedAt'>> = [
     ramGb: 2,
     storageGb: 40,
     bandwidthTb: 2,
+    renewable: true,
     operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12'],
     locations: [],
     price: 95_000,
@@ -220,6 +222,7 @@ const VPS_PACKAGES: Array<Omit<VpsPackageRecord, 'createdAt' | 'updatedAt'>> = [
     ramGb: 4,
     storageGb: 80,
     bandwidthTb: 4,
+    renewable: true,
     operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12', 'AlmaLinux 9'],
     locations: [],
     price: 175_000,
@@ -235,6 +238,7 @@ const VPS_PACKAGES: Array<Omit<VpsPackageRecord, 'createdAt' | 'updatedAt'>> = [
     ramGb: 8,
     storageGb: 160,
     bandwidthTb: 8,
+    renewable: true,
     operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12', 'AlmaLinux 9'],
     locations: [],
     price: 320_000,
@@ -250,6 +254,7 @@ const VPS_PACKAGES: Array<Omit<VpsPackageRecord, 'createdAt' | 'updatedAt'>> = [
     ramGb: 16,
     storageGb: 320,
     bandwidthTb: 16,
+    renewable: true,
     operatingSystems: ['Ubuntu 24.04 LTS', 'Debian 12', 'AlmaLinux 9'],
     locations: [],
     price: 620_000,

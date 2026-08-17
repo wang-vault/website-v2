@@ -14,6 +14,8 @@ const packageSchema = z.object({
   storageGb: z.number().int().min(1).max(100_000),
   price: z.number().int().min(0).max(1_000_000_000),
   popular: z.boolean(),
+  /** Layanan pada paket ini dapat diperpanjang pelanggan. */
+  renewable: z.boolean().optional().default(true),
   active: z.boolean(),
   sortOrder: z.number().int().min(0).max(10_000),
 });

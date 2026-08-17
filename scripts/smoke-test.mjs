@@ -658,6 +658,135 @@ async function main() {
       assert(manualRun.status === 200, 'admin menjalankan pengingat manual → 200');
     }
 
+    // ── Test 9d: perpanjangan layanan
+    console.log('Test 9d — Perpanjangan layanan');
+    const renewSource = await request('/api/orders', {
+      method: 'POST',
+      headers: { origin: BASE },
+      body: {
+        customerName: 'Pelanggan Perpanjangan',
+        customerWhatsapp: '6281234567890',
+        customerEmail: 'perpanjangan@example.com',
+        serverName: 'server-perpanjangan',
+        notes: '',
+        couponCode: '',
+        service: 'vps',
+        packageId: (vpsList[0] && vpsList[0].id) || 'vps-standard-2c4g',
+        agreeTerms: true,
+      },
+    });
+    const parentId = renewSource.json?.data?.order?.id;
+    const parentToken = renewSource.json?.data?.accessToken;
+
+    if (parentId && parentToken) {
+      const beforePeriod = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`);
+      assert(beforePeriod.json?.data?.allowed === false, 'tanpa masa aktif → perpanjangan ditolak');
+      assert(beforePeriod.json?.data?.reason === 'period_not_set', 'alasan penolakan: masa aktif belum diatur');
+
+      await request(`/api/admin/orders/${parentId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { activatedAt: days(-20), expiresAt: days(10) },
+      });
+
+      const eligible = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`);
+      assert(eligible.json?.data?.allowed === true, 'layanan dengan masa aktif dapat diperpanjang');
+      assert(eligible.json?.data?.price > 0, 'harga perpanjangan diambil dari katalog');
+
+      const created = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: { agreeTerms: true },
+      });
+      assert(created.status === 201, 'order perpanjangan dibuat → 201');
+      const renewalId = created.json?.data?.order?.id;
+      assert(created.json?.data?.order?.renewalOfOrderId === parentId, 'order perpanjangan tertaut ke induk');
+      assert(
+        created.json?.data?.order?.total === eligible.json?.data?.price,
+        'harga perpanjangan dihitung server, bukan dari klien',
+      );
+
+      const duplicate = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: { agreeTerms: true },
+      });
+      assert(duplicate.status === 409, 'perpanjangan ganda ditolak → 409');
+
+      const noConsent = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: {},
+      });
+      assert(noConsent.status === 422, 'perpanjangan tanpa persetujuan → 422');
+
+      if (renewalId) {
+        const beforeExpiry = (await request(`/api/admin/orders/${parentId}`, { jar: adminJar })).json?.data
+          ?.expiresAt;
+        const markPaid = await request(`/api/admin/orders/${renewalId}`, {
+          method: 'PATCH',
+          jar: adminJar,
+          headers: { 'x-csrf-token': csrfToken },
+          body: { status: 'paid' },
+        });
+        assert(markPaid.json?.data?.renewalAppliedAt !== null, 'perpanjangan ditandai sudah diterapkan');
+
+        const afterParent = await request(`/api/admin/orders/${parentId}`, { jar: adminJar });
+        const afterExpiry = afterParent.json?.data?.expiresAt;
+        assert(
+          new Date(afterExpiry).getTime() > new Date(beforeExpiry).getTime(),
+          'masa aktif induk mundur setelah perpanjangan lunas',
+        );
+        assert(
+          Array.isArray(afterParent.json?.data?.remindersSent) &&
+            afterParent.json.data.remindersSent.length === 0,
+          'siklus pengingat direset setelah perpanjangan',
+        );
+
+        await request(`/api/admin/orders/${renewalId}`, {
+          method: 'PATCH',
+          jar: adminJar,
+          headers: { 'x-csrf-token': csrfToken },
+          body: { status: 'completed' },
+        });
+        const afterTwice = await request(`/api/admin/orders/${parentId}`, { jar: adminJar });
+        assert(
+          afterTwice.json?.data?.expiresAt === afterExpiry,
+          'perpanjangan idempoten — masa aktif tidak bertambah dua kali',
+        );
+
+        const renewRenewal = await request(`/api/orders/${renewalId}/renew`, { jar: adminJar });
+        assert(
+          renewRenewal.json?.data?.reason === 'is_renewal_order',
+          'order perpanjangan tidak dapat diperpanjang lagi',
+        );
+      }
+
+      // Paket yang ditandai tidak dapat diperpanjang menolak perpanjangan.
+      const vpsPackageId = (vpsList[0] && vpsList[0].id) || 'vps-standard-2c4g';
+      await request(`/api/admin/vps-packages/${vpsPackageId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { renewable: false },
+      });
+      const blocked = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`);
+      assert(blocked.json?.data?.reason === 'package_not_renewable', 'paket tanpa perpanjangan → ditolak');
+      const blockedPost = await request(`/api/orders/${parentId}/renew?token=${encodeURIComponent(parentToken)}`, {
+        method: 'POST',
+        headers: { origin: BASE },
+        body: { agreeTerms: true },
+      });
+      assert(blockedPost.status === 409, 'server menolak perpanjangan paket non-renewable → 409');
+      await request(`/api/admin/vps-packages/${vpsPackageId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { renewable: true },
+      });
+    }
+
     // ── Test 10: kupon
     console.log('Test 10 — Kupon');
     const validCoupon = await request('/api/coupons/validate', {

@@ -287,6 +287,8 @@ export async function createOrder(
       total,
       status: 'pending',
       ipAddress: context.ipAddress,
+      renewalOfOrderId: null,
+      renewalAppliedAt: null,
       // Masa aktif belum ditetapkan saat order dibuat — admin mengisinya
       // setelah layanan benar-benar disiapkan.
       activatedAt: null,

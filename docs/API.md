@@ -85,12 +85,30 @@ Artikel terbit. `GET /api/knowledge-base` / `[slug]` untuk knowledge base.
 `tier` diabaikan; harga selalu diambil dari katalog di server. Layanan yang tidak berstatus *Tersedia* ditolak
 dengan `409 TIER_ONGOING` / `409 TIER_UNAVAILABLE`.
 
+## Perpanjangan
+
+| Endpoint | Keterangan |
+| --- | --- |
+| `GET /api/orders/[id]/renew` | Kelayakan & harga perpanjangan (staff, pemilik order, atau `?token=`). |
+| `POST /api/orders/[id]/renew` | Membuat order perpanjangan (body: `agreeTerms: true`, `turnstileToken?`). Rate limit sama dengan pembuatan order. |
+
+Kode penolakan (HTTP 409): `RENEWAL_PACKAGE_NOT_RENEWABLE`, `RENEWAL_PACKAGE_MISSING`,
+`RENEWAL_CATALOG_UNAVAILABLE`, `RENEWAL_PERIOD_NOT_SET`, `RENEWAL_ORDER_INACTIVE`, `RENEWAL_RENEWAL_PENDING`,
+`RENEWAL_IS_RENEWAL_ORDER`.
+
+## Cron
+
+| Endpoint | Keterangan |
+| --- | --- |
+| `GET/POST /api/cron/reminders` | Pengingat masa aktif (H-7, H-3, H-1, hari kedaluwarsa). Memerlukan `Authorization: Bearer $CRON_SECRET` atau header `x-cron-secret`; menolak semua permintaan bila `CRON_SECRET` kosong. Idempoten. |
+
 ## Admin (`/api/admin/*`, RBAC per route)
 
 | Endpoint | Minimum role |
 | --- | --- |
 | `GET /orders` (filter `status`, `q`, `page`) | Staff (`orders.read`) |
-| `GET/PATCH /orders/[id]` (`status`) | Staff (`orders.read` / `orders.update`) |
+| `GET/PATCH /orders/[id]` (`status`, `activatedAt`, `expiresAt`) | Staff (`orders.read` / `orders.update`). Menandai order perpanjangan `paid`/`completed` otomatis memundurkan masa aktif order induk. |
+| `GET /reminders`, `POST /reminders` | Staff (`orders.read` / `orders.update`) — ringkasan masa aktif & menjalankan pengingat manual |
 | `GET /customers` | Staff (`customers.read`, baca-saja) |
 | `PATCH /customers/[id]` | Admin (`customers.update`); perubahan role → Owner (`roles.manage`) |
 | `GET /tickets`, `GET/PATCH /tickets/[id]`, `POST /tickets/[id]/messages` | Staff (`tickets.read` / `tickets.reply`) |

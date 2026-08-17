@@ -11,6 +11,7 @@ const packagePatchSchema = z.object({
   storageGb: z.number().int().min(1).max(100_000).optional(),
   price: z.number().int().min(0).max(1_000_000_000).optional(),
   popular: z.boolean().optional(),
+  renewable: z.boolean().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(10_000).optional(),
 });

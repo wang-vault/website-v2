@@ -104,6 +104,8 @@ create table if not exists packages (
   "storageGb" integer not null,
   price bigint not null,
   popular boolean not null default false,
+  -- Paket promo atau paket yang dihentikan dapat ditandai tidak dapat diperpanjang.
+  renewable boolean not null default true,
   active boolean not null default true,
   "sortOrder" integer not null default 0,
   "createdAt" timestamptz not null default now(),
@@ -121,6 +123,7 @@ create table if not exists vps_packages (
   "ramGb" integer not null,
   "storageGb" integer not null,
   "bandwidthTb" integer not null default 0,
+  renewable boolean not null default true,
   "operatingSystems" text[] not null default '{}',
   locations text[] not null default '{}',
   price bigint not null,
@@ -208,6 +211,9 @@ create table if not exists orders (
   -- Tahap pengingat yang sudah dikirim (hari sebelum kedaluwarsa; 0 = hari-H).
   "remindersSent" integer[] not null default '{}',
   "lastReminderAt" timestamptz,
+  -- Perpanjangan: order ini memperpanjang masa aktif order induk.
+  "renewalOfOrderId" text references orders (id) on delete set null,
+  "renewalAppliedAt" timestamptz,
   "accessTokenHash" text,
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()
@@ -215,6 +221,7 @@ create table if not exists orders (
 
 create index if not exists idx_orders_user on orders ("userId");
 create index if not exists idx_orders_expires on orders ("expiresAt");
+create index if not exists idx_orders_renewal_of on orders ("renewalOfOrderId");
 create index if not exists idx_orders_status on orders (status);
 create index if not exists idx_orders_created on orders ("createdAt");
 create index if not exists idx_orders_customer_email on orders ("customerEmail");
@@ -549,6 +556,7 @@ begin
   insert into orders (
     id, "userId", "customerName", "customerWhatsapp", "customerEmail",
     "serverName", notes, service, tier, "packageId", cpu, "ramGb", "storageGb",
+    "renewalOfOrderId",
     "unitPrice", "discountAmount", "couponCode", total, status,
     "ipAddress", "accessTokenHash", "createdAt", "updatedAt"
   ) values (
@@ -565,6 +573,7 @@ begin
     (v_order ->> 'cpu')::integer,
     (v_order ->> 'ramGb')::integer,
     (v_order ->> 'storageGb')::integer,
+    nullif(v_order ->> 'renewalOfOrderId', '')::text,
     (v_order ->> 'unitPrice')::bigint,
     coalesce((v_order ->> 'discountAmount')::bigint, 0),
     nullif(v_order ->> 'couponCode', '')::text,
@@ -702,6 +711,12 @@ alter table orders add column if not exists "expiresAt" timestamptz;
 alter table orders add column if not exists "remindersSent" integer[] not null default '{}';
 alter table orders add column if not exists "lastReminderAt" timestamptz;
 create index if not exists idx_orders_expires on orders ("expiresAt");
+
+alter table orders add column if not exists "renewalOfOrderId" text;
+alter table orders add column if not exists "renewalAppliedAt" timestamptz;
+create index if not exists idx_orders_renewal_of on orders ("renewalOfOrderId");
+alter table packages add column if not exists renewable boolean not null default true;
+alter table vps_packages add column if not exists renewable boolean not null default true;
 
 alter table products add column if not exists "catalogKey" text;
 alter table products drop constraint if exists products_catalogkey_check;

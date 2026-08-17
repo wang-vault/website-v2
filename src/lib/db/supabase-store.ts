@@ -410,6 +410,25 @@ export class SupabaseDataStore implements DataStore {
       if (error) throw new Error(`Supabase orders.listWithExpiry: ${error.message}`);
       return (data ?? []) as OrderRecord[];
     },
+    listRenewals: async (parentOrderId: string) => {
+      const { data, error } = await this.client
+        .from(ORDER_TABLE)
+        .select('*')
+        .eq('renewalOfOrderId', parentOrderId)
+        .order('createdAt', { ascending: false });
+      if (error) throw new Error(`Supabase orders.listRenewals: ${error.message}`);
+      return (data ?? []) as OrderRecord[];
+    },
+    markRenewalApplied: async (id: string, appliedAt: string) => {
+      const { data, error } = await this.client
+        .from(ORDER_TABLE)
+        .update({ renewalAppliedAt: appliedAt, updatedAt: new Date().toISOString() })
+        .eq('id', id)
+        .select('*')
+        .maybeSingle();
+      if (error) throw new Error(`Supabase orders.markRenewalApplied: ${error.message}`);
+      return (data as OrderRecord | null) ?? null;
+    },
     markReminderSent: async (id: string, stage: number, sentAt: string) => {
       const current = await this.orders.findById(id);
       if (!current) return null;

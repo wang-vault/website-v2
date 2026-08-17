@@ -4,6 +4,7 @@ import { requireAdmin, requireWriteSecurity } from '@/lib/api/guards';
 import { canTransition } from '@/lib/payments';
 import { clientIp } from '@/lib/security/rate-limit';
 import { formatDateTime } from '@/lib/utils';
+import { applyRenewal } from '@/lib/renewals/service';
 import type { OrderStatus } from '@/types';
 
 /**
@@ -142,6 +143,25 @@ export async function PATCH(
         }
         const result = await db.orders.updateStatus(id, nextStatus);
         if (result) updated = result;
+
+        // Order perpanjangan yang lunas/selesai langsung memundurkan masa aktif
+        // order induk. Idempoten lewat renewalAppliedAt.
+        if (updated.renewalOfOrderId && (nextStatus === 'paid' || nextStatus === 'completed')) {
+          const renewal = await applyRenewal(db, updated);
+          if (renewal.applied) {
+            const refreshed = await db.orders.findById(id);
+            if (refreshed) updated = refreshed;
+            await db.audit.log({
+              actorId: session.sub,
+              actorEmail: session.email,
+              action: 'apply_renewal',
+              resource: 'order',
+              resourceId: renewal.parentId,
+              ipAddress: ip,
+              metadata: { renewalOrderId: id, newExpiry: renewal.newExpiry },
+            });
+          }
+        }
 
         if (order.userId) {
           await db.notifications.create({

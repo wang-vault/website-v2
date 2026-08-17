@@ -97,9 +97,29 @@ Penegakan berlapis (defense in depth):
 4. **UI** — menu difilter di server (`src/lib/admin/nav.ts`) dan komponen dirender `readOnly`. Ini kenyamanan,
    **bukan** mekanisme keamanan.
 
+## 8a. Perpanjangan Layanan
+
+- Kelayakan perpanjangan (paket `renewable`, status katalog, masa aktif, duplikasi) diverifikasi **server-side**
+  pada setiap permintaan — menyembunyikan tombol di UI bukan pengaman.
+- Harga perpanjangan selalu dihitung ulang dari katalog; nilai dari klien tidak pernah dipakai.
+- Akses memakai aturan halaman order: staff, pemilik order, atau pemegang token akses.
+- Satu order perpanjangan hanya dapat menambah masa aktif **satu kali** (`renewalAppliedAt`), sehingga
+  perubahan status berulang tidak bisa dipakai menambah masa aktif berkali-kali.
+- Endpoint perpanjangan memakai kuota rate limit order dan tetap melalui validasi Origin/CSRF serta Turnstile.
+
+## 8b. Endpoint Terjadwal (Cron)
+
+`/api/cron/reminders` adalah satu-satunya endpoint terjadwal:
+
+- **Fail closed**: bila `CRON_SECRET` tidak dikonfigurasi, seluruh permintaan ditolak 401.
+- Perbandingan secret **konstan-waktu**; diterima lewat `Authorization: Bearer` (Vercel Cron) atau
+  header `x-cron-secret`.
+- Respons tidak memuat data pelanggan — hanya jumlah order diperiksa, jumlah pengingat terkirim, dan tahapnya.
+- Setiap pengingat tercatat di audit log dengan aktor `system`.
+
 ## 9. Audit Log
 
-Dicatat: login, logout, login gagal, register, verifikasi email, reset password, create/update/delete (order, coupon, product, package, ticket, CMS, legal, settings, pricing, profile, role), perubahan maintenance.
+Dicatat: login, logout, login gagal, register, verifikasi email, reset password, create/update/delete (order, coupon, product, package, VPS package, ticket, CMS, legal, settings, pricing, profile, role), perubahan masa aktif layanan, penerapan perpanjangan (`apply_renewal`), pengiriman pengingat (`service_reminder`), dan perubahan maintenance.
 
 Data: actor, action, resource, resourceId, timestamp, IP, metadata (tanpa password/secret). Di Supabase, log ditulis dalam transaksi pembuatan order. RLS memblokir pembacaan audit oleh role client.
 
