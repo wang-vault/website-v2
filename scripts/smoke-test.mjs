@@ -121,6 +121,7 @@ async function main() {
       RATE_LIMIT_LOGIN_MAX: process.env.RATE_LIMIT_LOGIN_MAX || '50',
       // Harness membuat banyak order (Low, Medium, High, VPS, kupon) dari satu IP.
       RATE_LIMIT_ORDER_MAX: process.env.RATE_LIMIT_ORDER_MAX || '100',
+      CRON_SECRET: process.env.CRON_SECRET || 'smoke-cron-secret-0123456789abcdef',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true, // grup proses sendiri agar child next-server ikut dimatikan
@@ -547,6 +548,115 @@ async function main() {
 
     const vpsPage = await request('/vps');
     assert(vpsPage.status === 200, '/vps → 200');
+
+    // ── Test 9c: masa aktif layanan & pengingat
+    console.log('Test 9c — Masa aktif layanan & pengingat');
+    const cronSecret = process.env.CRON_SECRET || 'smoke-cron-secret-0123456789abcdef';
+
+    const cronNoAuth = await request('/api/cron/reminders');
+    assert(cronNoAuth.status === 401, 'cron tanpa secret → 401');
+    const cronWrongAuth = await request('/api/cron/reminders', {
+      headers: { authorization: 'Bearer salah' },
+    });
+    assert(cronWrongAuth.status === 401, 'cron dengan secret salah → 401');
+
+    const days = (n) => new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString();
+
+    const periodOrder = await request('/api/orders', {
+      method: 'POST',
+      headers: { origin: BASE },
+      body: {
+        customerName: 'Pelanggan Masa Aktif',
+        customerWhatsapp: '6281234567890',
+        customerEmail: 'masaaktif@example.com',
+        serverName: 'server-masa-aktif',
+        notes: '',
+        couponCode: '',
+        service: 'minecraft',
+        tier: 'low',
+        cpu: 2,
+        ramGb: 4,
+        storageGb: 20,
+        agreeTerms: true,
+      },
+    });
+    const periodOrderId = periodOrder.json?.data?.order?.id;
+    assert(Boolean(periodOrderId), 'order untuk uji masa aktif dibuat');
+    assert(periodOrder.json?.data?.order?.expiresAt === null, 'masa aktif kosong saat order dibuat');
+
+    if (periodOrderId) {
+      const invalidPeriod = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { activatedAt: days(5), expiresAt: days(1) },
+      });
+      assert(invalidPeriod.status === 422, 'exp sebelum tanggal aktif → 422');
+
+      const setPeriod = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { activatedAt: days(-30), expiresAt: days(5) },
+      });
+      assert(setPeriod.status === 200, 'admin menetapkan masa aktif → 200');
+      assert(setPeriod.json?.data?.expiresAt !== null, 'tanggal kedaluwarsa tersimpan');
+
+      const cronRun = await request('/api/cron/reminders', {
+        headers: { authorization: `Bearer ${cronSecret}` },
+      });
+      assert(cronRun.status === 200, 'cron dengan secret benar → 200');
+      assert(cronRun.json?.data?.sent >= 1, 'pengingat H-7 terkirim untuk layanan sisa 5 hari');
+
+      const cronRepeat = await request('/api/cron/reminders', {
+        headers: { authorization: `Bearer ${cronSecret}` },
+      });
+      assert(cronRepeat.json?.data?.sent === 0, 'cron idempoten — tidak mengirim ulang tahap yang sama');
+
+      const afterReminder = await request(`/api/admin/orders/${periodOrderId}`, { jar: adminJar });
+      assert(
+        Array.isArray(afterReminder.json?.data?.remindersSent) &&
+          afterReminder.json.data.remindersSent.includes(7),
+        'tahap pengingat tercatat pada order',
+      );
+
+      const extend = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { expiresAt: days(40) },
+      });
+      assert(
+        Array.isArray(extend.json?.data?.remindersSent) && extend.json.data.remindersSent.length === 0,
+        'perpanjangan mereset siklus pengingat',
+      );
+
+      const expiredPeriod = await request(`/api/admin/orders/${periodOrderId}`, {
+        method: 'PATCH',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+        body: { expiresAt: days(-1) },
+      });
+      assert(expiredPeriod.status === 200, 'masa aktif dapat diset ke masa lalu');
+      assert(
+        expiredPeriod.json?.data?.status === 'paid' || expiredPeriod.json?.data?.status !== 'expired',
+        'status order tidak diubah otomatis saat masa aktif habis',
+      );
+
+      const reminderSummary = await request('/api/admin/reminders', { jar: adminJar });
+      assert(reminderSummary.status === 200, 'ringkasan masa aktif (admin) → 200');
+      assert(
+        typeof reminderSummary.json?.data?.summary?.expired === 'number',
+        'ringkasan memuat jumlah layanan lewat masa aktif',
+      );
+
+      const manualRun = await request('/api/admin/reminders', {
+        method: 'POST',
+        jar: adminJar,
+        headers: { 'x-csrf-token': csrfToken },
+      });
+      assert(manualRun.status === 200, 'admin menjalankan pengingat manual → 200');
+    }
 
     // ── Test 10: kupon
     console.log('Test 10 — Kupon');

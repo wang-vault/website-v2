@@ -287,6 +287,12 @@ export async function createOrder(
       total,
       status: 'pending',
       ipAddress: context.ipAddress,
+      // Masa aktif belum ditetapkan saat order dibuat — admin mengisinya
+      // setelah layanan benar-benar disiapkan.
+      activatedAt: null,
+      expiresAt: null,
+      remindersSent: [],
+      lastReminderAt: null,
       accessTokenHash: hashAccessToken(accessToken),
     },
     item: {

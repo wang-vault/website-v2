@@ -107,6 +107,15 @@ export type CollectionName = keyof JsonCollections;
 function normalizeCollections(parsed: Partial<JsonCollections>): JsonCollections {
   const collections = { ...parsed } as JsonCollections;
   if (!Array.isArray(collections.vpsPackages)) collections.vpsPackages = [];
+  if (Array.isArray(collections.orders)) {
+    collections.orders = collections.orders.map((order: OrderRecord) => ({
+      ...order,
+      activatedAt: order.activatedAt ?? null,
+      expiresAt: order.expiresAt ?? null,
+      remindersSent: Array.isArray(order.remindersSent) ? order.remindersSent : [],
+      lastReminderAt: order.lastReminderAt ?? null,
+    }));
+  }
   if (Array.isArray(collections.products)) {
     collections.products = collections.products.map((product: ProductRecord) =>
       product.catalogKey === undefined ? { ...product, catalogKey: null } : product,
@@ -440,6 +449,45 @@ export class JsonDataStore implements DataStore {
       const record = this.data.orders.find((o) => o.id === id);
       if (!record) return null;
       const updated: OrderRecord = { ...record, status, updatedAt: toIso() };
+      await this.mutate((c) => {
+        const index = c.orders.findIndex((o) => o.id === id);
+        if (index >= 0) c.orders[index] = updated;
+      });
+      return updated;
+    },
+    updateServicePeriod: async (id, input) => {
+      const record = this.data.orders.find((o) => o.id === id);
+      if (!record) return null;
+      const updated: OrderRecord = {
+        ...record,
+        activatedAt: input.activatedAt,
+        expiresAt: input.expiresAt,
+        remindersSent: input.remindersSent,
+        updatedAt: toIso(),
+      };
+      await this.mutate((c) => {
+        const index = c.orders.findIndex((o) => o.id === id);
+        if (index >= 0) c.orders[index] = updated;
+      });
+      return updated;
+    },
+    listWithExpiry: async (input) => {
+      const limit = input?.limit ?? 200;
+      return this.data.orders
+        .filter((o) => Boolean(o.expiresAt))
+        .sort((a, b) => String(a.expiresAt).localeCompare(String(b.expiresAt)))
+        .slice(0, limit);
+    },
+    markReminderSent: async (id: string, stage: number, sentAt: string) => {
+      const record = this.data.orders.find((o) => o.id === id);
+      if (!record) return null;
+      if (record.remindersSent.includes(stage)) return record;
+      const updated: OrderRecord = {
+        ...record,
+        remindersSent: [...record.remindersSent, stage].sort((a, b) => b - a),
+        lastReminderAt: sentAt,
+        updatedAt: toIso(),
+      };
       await this.mutate((c) => {
         const index = c.orders.findIndex((o) => o.id === id);
         if (index >= 0) c.orders[index] = updated;

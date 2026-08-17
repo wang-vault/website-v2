@@ -202,12 +202,19 @@ create table if not exists orders (
   status text not null default 'pending' check (status in
     ('pending','awaiting_payment','paid','processing','completed','cancelled','expired','refunded')),
   "ipAddress" text,
+  -- Masa aktif layanan; ditetapkan admin setelah layanan disiapkan.
+  "activatedAt" timestamptz,
+  "expiresAt" timestamptz,
+  -- Tahap pengingat yang sudah dikirim (hari sebelum kedaluwarsa; 0 = hari-H).
+  "remindersSent" integer[] not null default '{}',
+  "lastReminderAt" timestamptz,
   "accessTokenHash" text,
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()
 );
 
 create index if not exists idx_orders_user on orders ("userId");
+create index if not exists idx_orders_expires on orders ("expiresAt");
 create index if not exists idx_orders_status on orders (status);
 create index if not exists idx_orders_created on orders ("createdAt");
 create index if not exists idx_orders_customer_email on orders ("customerEmail");
@@ -689,6 +696,12 @@ alter table orders alter column tier drop not null;
 
 alter table settings add column if not exists "catalogStatus" jsonb not null default
   '{"low":"available","medium":"available","high":"available","vps":"available"}'::jsonb;
+
+alter table orders add column if not exists "activatedAt" timestamptz;
+alter table orders add column if not exists "expiresAt" timestamptz;
+alter table orders add column if not exists "remindersSent" integer[] not null default '{}';
+alter table orders add column if not exists "lastReminderAt" timestamptz;
+create index if not exists idx_orders_expires on orders ("expiresAt");
 
 alter table products add column if not exists "catalogKey" text;
 alter table products drop constraint if exists products_catalogkey_check;

@@ -120,6 +120,7 @@ Seluruh variable didokumentasikan di [.env.example](.env.example). Ringkasan kel
 | WHATSAPP | `WHATSAPP_NUMBER` (format internasional tanpa `+`) |
 | DISCORD | `DISCORD_INVITE_URL` (opsional) |
 | EMAIL | `EMAIL_PROVIDER` (`console` atau `resend`), `EMAIL_FROM`, `RESEND_API_KEY` |
+| CRON | `CRON_SECRET` (wajib agar pengingat masa aktif berjalan: `openssl rand -hex 32`) |
 | SECURITY | `RATE_LIMIT_*` |
 
 **Jangan commit secret.** `.env*` di-ignore kecuali `.env.example`. Service role key tidak pernah dikirim ke browser (hanya dipakai di server).

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/state';
 import { formatDate, formatRupiah } from '@/lib/utils';
 import { orderCatalogLabel } from '@/lib/catalog';
+import { remainingLabel, serviceState } from '@/lib/reminders';
 import { ORDER_STATUS_LABELS } from '@/types';
 import type { OrderRecord } from '@/types';
 
@@ -48,6 +49,32 @@ export default async function DashboardOrdersPage() {
         <span className="text-xs">
           {orderCatalogLabel(order)}
           {order.packageId ? ` · ${order.packageId}` : ` · ${order.cpu}C/${order.ramGb}G/${order.storageGb}G`}
+        </span>
+      ),
+    },
+    {
+      key: 'masaAktif',
+      header: 'Masa Aktif',
+      render: (order) => (
+        <span className="text-xs">
+          {order.expiresAt ? (
+            <>
+              <span className="block text-text-primary">{formatDate(order.expiresAt)}</span>
+              <span
+                className={
+                  serviceState(order) === 'expired'
+                    ? 'text-error'
+                    : serviceState(order) === 'expiring_soon'
+                      ? 'text-warning'
+                      : 'text-text-muted'
+                }
+              >
+                {remainingLabel(order.expiresAt)}
+              </span>
+            </>
+          ) : (
+            <span className="text-text-muted">Belum diatur</span>
+          )}
         </span>
       ),
     },

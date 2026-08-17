@@ -385,6 +385,48 @@ export class SupabaseDataStore implements DataStore {
       if (error) throw new Error(`Supabase orders.findById: ${error.message}`);
       return (data as OrderRecord | null) ?? null;
     },
+    updateServicePeriod: async (id, input) => {
+      const { data, error } = await this.client
+        .from(ORDER_TABLE)
+        .update({
+          activatedAt: input.activatedAt,
+          expiresAt: input.expiresAt,
+          remindersSent: input.remindersSent,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select('*')
+        .maybeSingle();
+      if (error) throw new Error(`Supabase orders.updateServicePeriod: ${error.message}`);
+      return (data as OrderRecord | null) ?? null;
+    },
+    listWithExpiry: async (input) => {
+      const { data, error } = await this.client
+        .from(ORDER_TABLE)
+        .select('*')
+        .not('expiresAt', 'is', null)
+        .order('expiresAt', { ascending: true })
+        .limit(input?.limit ?? 200);
+      if (error) throw new Error(`Supabase orders.listWithExpiry: ${error.message}`);
+      return (data ?? []) as OrderRecord[];
+    },
+    markReminderSent: async (id: string, stage: number, sentAt: string) => {
+      const current = await this.orders.findById(id);
+      if (!current) return null;
+      if (current.remindersSent.includes(stage)) return current;
+      const { data, error } = await this.client
+        .from(ORDER_TABLE)
+        .update({
+          remindersSent: [...current.remindersSent, stage].sort((a, b) => b - a),
+          lastReminderAt: sentAt,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select('*')
+        .maybeSingle();
+      if (error) throw new Error(`Supabase orders.markReminderSent: ${error.message}`);
+      return (data as OrderRecord | null) ?? null;
+    },
     listByUser: async (userId: string) => {
       const { data, error } = await this.client
         .from(ORDER_TABLE)

@@ -141,6 +141,15 @@ export interface OrderRepository {
     pageSize: number;
   }): Promise<Paginated<OrderRecord>>;
   updateStatus(id: string, status: OrderStatus): Promise<OrderRecord | null>;
+  /** Menyimpan masa aktif layanan (dan mereset tahap pengingat bila perlu). */
+  updateServicePeriod(
+    id: string,
+    input: { activatedAt: string | null; expiresAt: string | null; remindersSent: number[] },
+  ): Promise<OrderRecord | null>;
+  /** Order yang memiliki tanggal kedaluwarsa — sumber data pengingat. */
+  listWithExpiry(input?: { limit?: number }): Promise<OrderRecord[]>;
+  /** Menandai satu tahap pengingat sebagai terkirim (idempoten). */
+  markReminderSent(id: string, stage: number, sentAt: string): Promise<OrderRecord | null>;
   stats(): Promise<OrderStats>;
 }
 

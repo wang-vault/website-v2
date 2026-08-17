@@ -189,6 +189,22 @@ export interface OrderRecord {
   total: number;
   status: OrderStatus;
   ipAddress: string | null;
+  /**
+   * Masa aktif layanan — ditetapkan admin setelah layanan benar-benar
+   * disiapkan. Tidak diisi otomatis saat order dibuat karena aktivasi
+   * bergantung pada proses di luar aplikasi.
+   */
+  activatedAt: string | null;
+  /** Akhir masa berlaku layanan. null = belum ditentukan. */
+  expiresAt: string | null;
+  /**
+   * Tahap pengingat yang sudah dikirim untuk siklus masa aktif saat ini
+   * (jumlah hari sebelum kedaluwarsa; 0 = hari kedaluwarsa). Direset saat
+   * admin memperpanjang masa aktif.
+   */
+  remindersSent: number[];
+  /** Waktu pengingat terakhir dikirim — untuk transparansi di panel. */
+  lastReminderAt: string | null;
   /** Hash SHA-256 dari token akses untuk halaman konfirmasi (guest). */
   accessTokenHash: string | null;
   createdAt: string;

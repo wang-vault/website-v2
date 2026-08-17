@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, CreditCard, Package, Ticket, Users } from 'lucide-react';
+import { ArrowRight, CalendarClock, CreditCard, Package, Ticket, Users } from 'lucide-react';
 import { getDb } from '@/lib/db';
 import { StatCard } from '@/components/ui/misc';
 import { formatDate, formatRupiah } from '@/lib/utils';
@@ -8,6 +8,7 @@ import { orderCatalogLabel } from '@/lib/catalog';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@/types';
 import { EmptyState } from '@/components/ui/state';
 import { requireAdminPage } from '@/lib/auth/page-guards';
+import { SERVICE_STATE_LABELS, remainingLabel, serviceState, summarizeExpiry } from '@/lib/reminders';
 import { ROLE_DEFINITIONS, type Permission } from '@/lib/auth/rbac';
 
 interface QuickAction {
@@ -32,12 +33,21 @@ const QUICK_ACTIONS: readonly QuickAction[] = [
 export default async function AdminOverviewPage() {
   const { role, can } = await requireAdminPage();
   const db = await getDb();
-  const [stats, orders, openTickets, customers] = await Promise.all([
+  const [stats, orders, openTickets, customers, withExpiry] = await Promise.all([
     db.orders.stats(),
     db.orders.listAdmin({ page: 1, pageSize: 5 }),
     db.tickets.listAdmin({ page: 1, pageSize: 100 }),
     db.users.count(),
+    db.orders.listWithExpiry({ limit: 500 }),
   ]);
+
+  // Pengingat masa aktif: layanan yang segera berakhir / sudah lewat.
+  const now = new Date();
+  const expiry = summarizeExpiry(withExpiry, now);
+  const attentionOrders = withExpiry
+    .filter((order) => ['expiring_soon', 'expired'].includes(serviceState(order, now)))
+    .filter((order) => !['cancelled', 'refunded', 'expired'].includes(order.status))
+    .slice(0, 6);
 
   const openTicketCount = openTickets.items.filter((t) => t.status !== 'closed').length;
   const actions = QUICK_ACTIONS.filter((action) => can(action.permission));
@@ -62,6 +72,12 @@ export default async function AdminOverviewPage() {
           <StatCard label="Pelanggan Terdaftar" value={String(customers)} icon={<Users className="h-4 w-4" aria-hidden="true" />} />
         ) : null}
         <StatCard label="Tiket Terbuka" value={String(openTicketCount)} icon={<Ticket className="h-4 w-4" aria-hidden="true" />} />
+        <StatCard
+          label="Segera berakhir (≤ 7 hari)"
+          value={String(expiry.expiringSoon)}
+          icon={<CalendarClock className="h-4 w-4" aria-hidden="true" />}
+          hint={`${expiry.expired} layanan sudah lewat masa aktif`}
+        />
         {can('analytics.read') ? (
           <StatCard
             label="Pendapatan (order non-batal)"
@@ -71,6 +87,47 @@ export default async function AdminOverviewPage() {
           />
         ) : null}
       </div>
+
+      {attentionOrders.length > 0 ? (
+        <section aria-labelledby="pengingat-masa-aktif">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 id="pengingat-masa-aktif" className="text-base font-semibold text-text-primary">
+              Perlu Perhatian — Masa Aktif Layanan
+            </h2>
+            <Link
+              href="/admin/orders"
+              className="inline-flex items-center gap-1 text-sm font-medium text-text-primary underline underline-offset-4"
+            >
+              Kelola masa aktif <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+            {attentionOrders.map((order) => {
+              const state = serviceState(order, now);
+              return (
+                <li key={order.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs font-medium text-text-primary">{order.id}</p>
+                    <p className="mt-0.5 truncate text-xs text-text-muted">
+                      {order.serverName} · {order.customerEmail}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className="text-xs text-text-muted">{remainingLabel(order.expiresAt, now)}</span>
+                    <Badge variant={state === 'expired' ? 'error' : 'warning'}>
+                      {SERVICE_STATE_LABELS[state]}
+                    </Badge>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2 text-xs leading-relaxed text-text-muted">
+            Pengingat H-7, H-3, H-1, dan hari kedaluwarsa dikirim otomatis ke pelanggan (notifikasi dashboard +
+            email). Status order tidak diubah otomatis — perpanjangan diputuskan tim WangStore.
+          </p>
+        </section>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="order-terbaru">

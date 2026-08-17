@@ -12,6 +12,7 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { ButtonLink } from '@/components/ui/button-link';
 import { orderCatalogLabel } from '@/lib/catalog';
+import { SERVICE_STATE_LABELS, remainingLabel, serviceState } from '@/lib/reminders';
 import { ORDER_STATUS_LABELS } from '@/types';
 
 export const metadata: Metadata = {
@@ -121,6 +122,36 @@ export default async function OrderConfirmationPage({ params, searchParams }: Pa
             <div className="flex justify-between gap-4">
               <dt className="text-text-secondary">Penyimpanan</dt>
               <dd className="text-right font-mono text-text-primary">{order.storageGb} GB</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-t border-border pt-3">
+              <dt className="text-text-secondary">Masa aktif</dt>
+              <dd className="text-right">
+                <Badge
+                  variant={
+                    serviceState(order) === 'expired'
+                      ? 'error'
+                      : serviceState(order) === 'expiring_soon'
+                        ? 'warning'
+                        : serviceState(order) === 'active'
+                          ? 'success'
+                          : 'neutral'
+                  }
+                >
+                  {SERVICE_STATE_LABELS[serviceState(order)]}
+                </Badge>
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-secondary">Aktif sejak</dt>
+              <dd className="text-right text-text-primary">
+                {order.activatedAt ? formatDateTime(order.activatedAt) : 'Belum diaktifkan'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-secondary">Berlaku sampai</dt>
+              <dd className="text-right text-text-primary">
+                {order.expiresAt ? `${formatDateTime(order.expiresAt)} · ${remainingLabel(order.expiresAt)}` : 'Belum ditentukan'}
+              </dd>
             </div>
             {order.notes ? (
               <div className="flex justify-between gap-4">

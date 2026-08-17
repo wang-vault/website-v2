@@ -9,6 +9,22 @@ dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 ### Ditambahkan
 
+- **Masa aktif layanan pada order** — kolom `activatedAt` (waktu aktif, ditetapkan admin) dan `expiresAt`
+  (waktu kedaluwarsa), dapat diatur di Panel Admin → Pesanan → *Kelola*. Validasi menolak tanggal kedaluwarsa
+  yang lebih awal dari tanggal aktif.
+- **Pengingat otomatis H-7, H-3, H-1, dan hari kedaluwarsa** — dikirim sebagai notifikasi dashboard pelanggan
+  sekaligus email. Idempoten (tahap tercatat pada `remindersSent`), tidak menumpuk bila scheduler sempat mati,
+  dan siklusnya direset saat admin memperpanjang masa aktif.
+- **Endpoint terjadwal `GET/POST /api/cron/reminders`** + `vercel.json` (cron harian). Memerlukan `CRON_SECRET`
+  dengan perbandingan konstan-waktu dan **menolak semua permintaan bila secret belum dikonfigurasi**.
+- **`GET/POST /api/admin/reminders`** — ringkasan masa aktif seluruh layanan dan tombol **Jalankan Pengingat**
+  di panel admin untuk memicu pengingat secara manual.
+- **Modul `src/lib/reminders/`** — logika murni keadaan layanan, sisa hari, dan tahap pengingat, dengan 22 unit
+  test baru.
+- Tampilan masa aktif untuk pelanggan (kolom di daftar pesanan + blok "Aktif sejak / Berlaku sampai" pada
+  halaman order) dan untuk admin (kolom Masa Aktif, kartu statistik "Segera berakhir", serta daftar
+  "Perlu Perhatian — Masa Aktif Layanan" pada Ringkasan).
+
 - **Katalog VPS** — tabel `vps_packages` (vCPU, RAM, penyimpanan, kuota transfer, sistem operasi, lokasi,
   harga final), halaman publik **`/vps`** dengan pemilihan paket + formulir pemesanan, endpoint publik
   `GET /api/vps-packages`, serta CRUD admin `/api/admin/vps-packages`.
@@ -50,6 +66,9 @@ dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 ### Diubah
 
+- Status order **tidak** diubah otomatis saat masa aktif habis — pengingat hanya memberi tahu, keputusan
+  perpanjangan tetap di tangan admin.
+- `PATCH /api/admin/orders/[id]` kini menerima `activatedAt` dan `expiresAt` selain `status`.
 - `orders` memiliki kolom `service`, dan `orders.tier` kini nullable (null untuk order VPS) — disertai
   migrasi idempoten di `database/schema.sql`.
 - `PUT /api/admin/settings` menerima grup field `catalogStatus` dengan izin `products.manage`.
