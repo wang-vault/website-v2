@@ -350,6 +350,7 @@ npm run smoke       # HTTP smoke test (126 acceptance check)
 | Gejala | Periksa |
 | --- | --- |
 | Build gagal | `npm run build` lokal; pastikan dependency terpasang (`npm install`). |
+| **Semua halaman 500 setelah deploy** (termasuk `/`, `/login`, `/admin`) | Penyebab paling umum: datastore production belum dikonfigurasi. Buka `https://DOMAIN/api/status` — `system.ok: false` berarti Supabase belum diisi / skema belum dijalankan, dan fallback JSON gagal karena filesystem Vercel read-only (`EACCES … data/wangstore.json.tmp`). Isi `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, jalankan `database/schema.sql`, lalu `npm run db:seed` — lihat [docs/DEPLOYMENT.md → Troubleshooting](docs/DEPLOYMENT.md#11-troubleshooting--http-500-setelah-deploy). Audit konfigurasi production juga dicetak sekali di log server. |
 | Supabase connection gagal | `NEXT_PUBLIC_SUPABASE_URL` dan `SUPABASE_SERVICE_ROLE_KEY`; firewall/network; schema sudah dijalankan. |
 | Authentication gagal | `JWT_SECRET` konsisten antar environment; `NEXT_PUBLIC_APP_URL` benar; cookie terblokir browser (private mode). |
 | Database permission error | RLS & policy di `database/schema.sql`; server memakai service role key; jangan pakai anon key untuk operasi server. |
@@ -364,9 +365,10 @@ npm run smoke       # HTTP smoke test (126 acceptance check)
 - [ ] RLS dikonfigurasi
 - [ ] Akun Owner dibuat (`npm run db:seed`)
 - [ ] Peran Admin/Staff diberikan lewat panel atau `npm run db:role`
-- [ ] Environment variables Vercel dikonfigurasi
+- [ ] Environment variables Vercel dikonfigurasi (Production **dan** Preview)
 - [ ] Production URL dikonfigurasi (`NEXT_PUBLIC_APP_URL`)
 - [ ] Build berhasil
+- [ ] `https://DOMAIN/api/status` → `system.ok: true` (datastore sehat)
 - [ ] Homepage berhasil
 - [ ] Register berhasil
 - [ ] Login berhasil

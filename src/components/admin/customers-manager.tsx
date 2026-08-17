@@ -35,6 +35,8 @@ function getCsrfToken(): string {
 
 const PAGE_SIZE = 25;
 const ROLES: Role[] = ['customer', 'staff', 'admin', 'owner'];
+/** Role yang dapat ditetapkan lewat panel — owner dibuat lewat npm run db:seed. */
+const ASSIGNABLE_ROLES: Role[] = ['customer', 'staff', 'admin'];
 
 export interface CustomersManagerProps {
   /** Izin customers.update — Admin ke atas. */
@@ -191,7 +193,7 @@ export function CustomersManager({ canUpdate, canManageRoles }: CustomersManager
                           <Select
                             value={pendingRole}
                             onChange={(e) => setPendingRole(e.target.value as Role)}
-                            options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+                            options={ASSIGNABLE_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
                             aria-label={`Role untuk ${customer.email}`}
                             className="h-8 w-auto py-0 text-xs"
                           />

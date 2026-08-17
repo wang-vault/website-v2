@@ -61,8 +61,10 @@ const isServer = typeof window === 'undefined';
 
 /**
  * Membaca sesi pengguna terautentikasi dari cookie httpOnly.
- * Memvalidasi ulang token terhadap tokenVersion pengguna di basis data,
- * sehingga logout / pergantian kata sandi langsung membatalkan sesi.
+ * Memverifikasi tanda tangan & masa berlaku JWT saja. Validasi ulang terhadap
+ * tokenVersion pengguna di basis data dilakukan oleh lapisan API
+ * (src/lib/api/guards.ts) dan guard halaman (src/lib/auth/page-guards.ts),
+ * karena middleware (edge) tidak dapat mengakses basis data.
  */
 export async function getSession(): Promise<SessionContext | null> {
   if (!isServer) return null;

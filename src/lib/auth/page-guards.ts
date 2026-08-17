@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { getSession, type SessionPayload } from '@/lib/auth/session';
+import { getDb } from '@/lib/db';
+import { getSession, type SessionContext, type SessionPayload } from '@/lib/auth/session';
 import { hasPermission, type Permission } from '@/lib/auth/rbac';
 import type { Role } from '@/types';
 
@@ -12,7 +13,7 @@ import type { Role } from '@/types';
  *
  * Pola pemakaian di halaman:
  *   const { role, can } = await requireAdminPage('pricing.read');
- *   ... <PricingForm readOnly={!can('pricing.manage')} />
+ *   ... <PricingForm readOnly={!can('pricing.manage')} /> ...
  */
 
 export interface AdminPageContext {
@@ -22,8 +23,30 @@ export interface AdminPageContext {
   can: (permission: Permission) => boolean;
 }
 
-export async function requireAdminPage(permission?: Permission): Promise<AdminPageContext> {
+/**
+ * Membaca sesi + memvalidasi ulang tokenVersion terhadap basis data.
+ *
+ * Logout / pergantian kata sandi menaikkan tokenVersion pengguna, sehingga
+ * sesi lama (cookie yang belum kedaluwarsa) langsung dianggap tidak berlaku
+ * untuk halaman yang dilindungi — bukan hanya untuk API. Bila datastore
+ * sedang bermasalah, validasi dilewati agar situs tidak terkunci total;
+ * lapisan API tetap memvalidasi tokenVersion sebelum setiap tindakan.
+ */
+export async function getValidatedSessionContext(): Promise<SessionContext | null> {
   const sessionContext = await getSession();
+  if (!sessionContext) return null;
+  try {
+    const db = await getDb();
+    const user = await db.users.findById(sessionContext.session.sub);
+    if (!user || user.tokenVersion !== sessionContext.session.tv) return null;
+  } catch {
+    return sessionContext;
+  }
+  return sessionContext;
+}
+
+export async function requireAdminPage(permission?: Permission): Promise<AdminPageContext> {
+  const sessionContext = await getValidatedSessionContext();
   if (!sessionContext) {
     redirect('/login?next=/admin');
   }

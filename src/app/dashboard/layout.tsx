@@ -19,11 +19,17 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   if (!sessionContext) redirect('/login?next=/dashboard');
 
   const db = await getDb();
-  const [profile, unreadCount, settings] = await Promise.all([
+  // Validasi ulang tokenVersion: logout/pergantian kata sandi langsung
+  // membatalkan sesi lama pada halaman dashboard, bukan hanya pada API.
+  const [user, profile, unreadCount, settings] = await Promise.all([
+    db.users.findById(sessionContext.session.sub),
     db.profiles.get(sessionContext.session.sub),
     db.notifications.unreadCount(sessionContext.session.sub),
     db.settings.get(),
   ]);
+  if (!user || user.tokenVersion !== sessionContext.session.tv) {
+    redirect('/login?next=/dashboard');
+  }
 
   return (
     <div className="container-page py-8">

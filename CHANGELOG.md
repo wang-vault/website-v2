@@ -7,7 +7,27 @@ dan proyek mengikuti [Semantic Versioning](https://semver.org/lang/id/).
 
 ## [Unreleased]
 
+### Diperbaiki
+
+- **HTTP 500 di seluruh halaman saat deploy tanpa Supabase** — fallback JSON datastore di production menulis
+  `data/wangstore.json`; di Vercel/Cloudflare filesystem bersifat read-only sehingga seluruh halaman
+  (termasuk panel admin) gagal dengan `EACCES`. Kini `getDb()` memeriksa kemampuan tulis filesystem sebelum
+  memakai fallback, kegagalan ditulis dilaporkan dengan pesan perbaikan yang jelas, dan **audit konfigurasi
+  production** (environment yang belum terisi) dicetak sekali di log server. `GET /api/status` juga memuat
+  blok `system` (driver datastore + hint) dan tetap mengembalikan 200 saat datastore bermasalah agar masalah
+  deployment dapat didiagnosis dari browser.
+- **Sesi tidak langsung batal pada halaman** — logout/pergantian kata sandi menaikkan `tokenVersion`, tetapi
+  halaman panel admin & dashboard hanya memverifikasi JWT (API sudah memvalidasi tokenVersion). Guard halaman
+  kini memvalidasi ulang tokenVersion terhadap basis data sehingga sesi lama langsung dialihkan ke login.
+- **Opsi role "Owner" di panel Pelanggan** — dropdown role menawarkan Owner padahal API selalu menolaknya;
+  opsi dihapus dari dropdown dan pesan error API diperjelas (akun Owner dibuat lewat `npm run db:seed`).
+- Komentar `getSession()` yang menyatakan validasi tokenVersion dilakukan di basis data (tidak akurat) kini
+  menjelaskan lapisan tempat validasi tersebut benar-benar terjadi.
+
 ### Ditambahkan
+
+- **Bagian Troubleshooting** di `docs/DEPLOYMENT.md` — alur diagnosis HTTP 500 pasca-deploy (cek
+  `/api/status`, datastore belum siap, skema belum dijalankan, JWT_SECRET, email verifikasi, preview).
 
 - **Perpanjangan layanan** — tombol *Perpanjang 1 Bulan* di halaman order membuat **order perpanjangan baru**
   yang tertaut ke order induk (`orders.renewalOfOrderId`), harga dihitung ulang dari katalog saat itu.
